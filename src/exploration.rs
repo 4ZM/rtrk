@@ -1,11 +1,36 @@
 use std::io;
 use std::io::Cursor;
 
+type Reducer = fn(Store) -> Store;
+type CB = fn();
+
+struct Store {
+    listeners: Vec<CB>,
+    num: i32,
+}
+
+fn dispatch(store: Store, action: Reducer) -> Store {
+    action(store)
+}
+
+fn add_action(store: Store) -> Store {
+    Store {
+        num: store.num + 1,
+        listeners: store.listeners,
+    }
+}
+
+struct VView {}
+impl VView {
+    fn render(store: &Store) {
+        println!("<<{}>>", store.num);
+    }
+}
+
 struct DataModel<'a> {
     listeners: Vec<Box<dyn FnMut() + 'a>>,
     num: u8,
 }
-
 impl<'a> DataModel<'a> {
     fn add_listener(&mut self, l: impl FnMut() + 'a) {
         self.listeners.push(Box::new(l));
@@ -68,5 +93,21 @@ mod tests {
 
         let output = String::from_utf8(buffer.into_inner()).unwrap();
         assert_eq!(output, "[2323]");
+    }
+
+    fn check_for_re_render() {
+        println!("YES rerender");
+    }
+
+    #[test]
+    fn redux_test() {
+        let store = Store {
+            num: 23,
+            listeners: vec![check_for_re_render],
+        };
+
+        VView::render(&store);
+        let store = dispatch(store, add_action);
+        VView::render(&store);
     }
 }
