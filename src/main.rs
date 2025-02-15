@@ -2,7 +2,7 @@ mod interaction;
 mod pos;
 mod term;
 
-// 1. TODO: Expand by adding reset-button in App
+// 1. DONE: Expand by adding reset-button in App
 // challenging for focus logic currently
 // 2. TODO: Expand by adding sum label in App
 // challenging with root state that depends on component states
@@ -10,49 +10,64 @@ mod term;
 // challenging since top App state is needed further down.
 
 mod app {
+    use crate::button::{button_rc, ButtonRc, ButtonView};
     use crate::interaction::Event;
     use crate::pos::Pos;
     use crate::spinner;
-    use crate::spinner::{Spinner, SpinnerView};
-    use crate::widget::{Focusable, View, Widget};
+    use crate::spinner::{spinner_rc, SpinnerRc, SpinnerView};
+    use crate::widget::{FocusChain, Focusable, FocusableRc, View, Widget};
 
     #[derive(Copy, Clone, Debug, PartialEq)]
     pub enum Message {
+        Reset,
         NextFocus,
         Spinner(usize, spinner::Message),
     }
 
     pub struct App {
-        pub spin: Vec<Spinner>,
-        pub focus: Option<usize>,
+        pub spin: Vec<SpinnerRc>,
+        focus_chain: FocusChain,
+        pub reset_btn: ButtonRc<Message>,
     }
     impl App {
         pub fn new() -> Self {
+            let spin = vec![spinner_rc(23), spinner_rc(42), spinner_rc(4711)];
+            let reset_btn = button_rc("RST", Message::Reset);
+
+            let mut focus_chain = FocusChain::new();
+            for s in &spin {
+                focus_chain.push(s.clone() as FocusableRc);
+            }
+            focus_chain.push(reset_btn.clone() as FocusableRc);
+
             Self {
-                focus: None,
-                spin: vec![Spinner::new(23), Spinner::new(42), Spinner::new(4711)],
+                focus_chain,
+                spin,
+                reset_btn,
             }
         }
     }
     impl Widget<Message, AppView> for App {
         fn update(&mut self, msg: Message) {
             match msg {
-                Message::Spinner(i, msg) => self.spin[i].update(msg),
+                Message::Spinner(i, msg) => self.spin[i].borrow_mut().update(msg),
                 Message::NextFocus => self.next_focus(),
+                Message::Reset => self.spin.iter().for_each(|s| s.borrow_mut().value = 0),
             };
         }
 
         fn view(&self, pos: Pos) -> AppView {
             AppView {
+                rst_btn: self.reset_btn.borrow().view(pos + Pos { r: 6, c: 9 }),
                 spinners: self
                     .spin
                     .iter()
                     .enumerate()
                     .map(|(i, s)| {
-                        s.view(
+                        s.borrow().view(
                             pos + Pos {
                                 r: 0,
-                                c: i as u16 * 10, // Horizontal spaced
+                                c: i as u16 * 10, // Horizontally spaced
                             },
                         )
                     })
@@ -60,56 +75,27 @@ mod app {
             }
         }
     }
+
+    // TODO : Some way to optimize this to allow direct forwarding?
     impl Focusable for App {
         fn has_focus(&self) -> bool {
-            self.focus.is_some()
+            self.focus_chain.has_focus()
         }
 
         fn defocus(&mut self) {
-            // TODO: children() can be used here
-            for s in self.spin.iter_mut() {
-                s.defocus();
-            }
-            self.focus = None;
+            self.focus_chain.defocus();
         }
         fn focus(&mut self) {
-            self.defocus();
-            self.update(Message::NextFocus);
+            self.focus_chain.focus();
         }
 
         fn next_focus(&mut self) {
-            // TODO: children() can be used here for generic tree traversal
-
-            self.focus = match self.focus {
-                None => {
-                    // Start a new focus cycle
-                    self.spin[0].next_focus();
-                    Some(0)
-                }
-                Some(idx) => {
-                    // Advance the child tree
-                    self.spin[idx].next_focus();
-
-                    // Still same child tree that has focus?
-                    if self.spin[idx].has_focus() {
-                        Some(idx)
-                    } else {
-                        // Child tree lost focus
-                        if idx == self.spin.len() - 1 {
-                            // Last subtree lost focus, nothing left
-                            None
-                        } else {
-                            // Start traversing next subtree
-                            self.spin[idx + 1].next_focus();
-                            Some(idx + 1)
-                        }
-                    }
-                }
-            };
+            self.focus_chain.next_focus();
         }
     }
 
     pub struct AppView {
+        rst_btn: ButtonView<Message>,
         spinners: Vec<SpinnerView>,
     }
     impl View<Message> for AppView {
@@ -118,6 +104,8 @@ mod app {
             for s in self.spinners.iter() {
                 s.draw(renderer);
             }
+
+            self.rst_btn.draw(renderer);
         }
         fn on_event(&self, e: Event) -> Vec<Message> {
             if let Event::Next = e {
@@ -134,17 +122,23 @@ mod app {
                 }
             }
 
+            for &e in self.rst_btn.on_event(e).iter() {
+                msgs.push(e);
+            }
+
             msgs
         }
     }
 }
 
 mod spinner {
-    use crate::button::{button, Button, ButtonView};
+    use crate::button::{button_rc, ButtonRc, ButtonView};
     use crate::interaction::Event;
     use crate::label::{label, Label};
     use crate::pos::Pos;
-    use crate::widget::{Focusable, View, Widget};
+    use crate::widget::{FocusChain, Focusable, FocusableRc, View, Widget};
+    use std::cell::RefCell;
+    use std::rc::Rc;
 
     #[derive(Copy, Clone, Debug, PartialEq)]
     pub enum Message {
@@ -153,17 +147,27 @@ mod spinner {
         Decrement,
     }
 
+    // TODO pub for test - ok?
     pub struct Spinner {
-        pub value: i64,               // TODO pub for test - ok?
-        pub inc_btn: Button<Message>, // they have the focus state, so can't be just view
-        pub dec_btn: Button<Message>,
+        pub value: i64,
+        pub inc_btn: ButtonRc<Message>,
+        pub dec_btn: ButtonRc<Message>,
+        focus_chain: FocusChain,
     }
     impl Spinner {
         pub fn new(initial_value: i64) -> Self {
+            let inc_btn = button_rc("+", Message::Increment);
+            let dec_btn = button_rc("-", Message::Decrement);
+
+            let mut focus_chain = FocusChain::new();
+            focus_chain.push(inc_btn.clone() as FocusableRc);
+            focus_chain.push(dec_btn.clone() as FocusableRc);
+
             Self {
                 value: initial_value,
-                inc_btn: button("+", Message::Increment),
-                dec_btn: button("-", Message::Decrement),
+                inc_btn,
+                dec_btn,
+                focus_chain,
             }
         }
     }
@@ -179,33 +183,24 @@ mod spinner {
         fn view(&self, pos: Pos) -> SpinnerView {
             SpinnerView {
                 lbl: label(pos + Pos { r: 1, c: 1 }, &self.value.to_string()),
-                inc_btn: self.inc_btn.view(pos + Pos { r: 0, c: 0 }),
-                dec_btn: self.dec_btn.view(pos + Pos { r: 2, c: 0 }),
+                inc_btn: self.inc_btn.borrow().view(pos + Pos { r: 0, c: 0 }),
+                dec_btn: self.dec_btn.borrow().view(pos + Pos { r: 2, c: 0 }),
             }
         }
     }
     impl Focusable for Spinner {
         fn has_focus(&self) -> bool {
-            self.inc_btn.has_focus() || self.dec_btn.has_focus()
+            self.focus_chain.has_focus()
         }
 
         fn next_focus(&mut self) {
-            if self.inc_btn.has_focus() {
-                self.inc_btn.defocus();
-                self.dec_btn.focus();
-            } else if self.dec_btn.has_focus() {
-                self.dec_btn.defocus();
-            } else {
-                self.inc_btn.focus();
-            }
+            self.focus_chain.next_focus()
         }
         fn defocus(&mut self) {
-            self.inc_btn.defocus();
-            self.dec_btn.defocus();
+            self.focus_chain.defocus()
         }
         fn focus(&mut self) {
-            self.inc_btn.focus();
-            self.dec_btn.defocus();
+            self.focus_chain.focus()
         }
     }
 
@@ -234,9 +229,17 @@ mod spinner {
             .concat()
         }
     }
+
+    pub type SpinnerRc = Rc<RefCell<Spinner>>;
+    pub fn spinner_rc(value: i64) -> SpinnerRc {
+        Rc::new(RefCell::new(Spinner::new(value)))
+    }
 }
 
 mod button {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
     use crate::interaction::Event;
     use crate::interaction::Renderer;
     use crate::pos::Pos;
@@ -247,6 +250,7 @@ mod button {
         on_press: Message,
         pub has_focus: bool,
     }
+
     impl<Message: Copy> Widget<Message, ButtonView<Message>> for Button<Message> {
         fn update(&mut self, _msg: Message) {}
         fn view(&self, pos: Pos) -> ButtonView<Message> {
@@ -298,13 +302,17 @@ mod button {
         }
     }
 
-    // TODO Reduce verbosity of Message: Copy constraint?
     pub fn button<Message>(text: &str, on_press: Message) -> Button<Message> {
         Button {
             text: text.to_string(),
             on_press,
             has_focus: false,
         }
+    }
+
+    pub type ButtonRc<Message> = Rc<RefCell<Button<Message>>>;
+    pub fn button_rc<Message>(text: &str, on_press: Message) -> ButtonRc<Message> {
+        Rc::new(RefCell::new(button(text, on_press)))
     }
 }
 
@@ -335,11 +343,78 @@ mod widget {
     // TODO : Design issue: Does it make sense to split widget and view?
     // If yes, how to reduce copy?
     // If no, what are the implications
+    use std::cell::RefCell;
+    use std::rc::Rc;
 
     use crate::interaction::{Event, Renderer};
     use crate::pos::Pos;
 
-    // TODO: Focusable as trait only make sense in polymorphic widget usecase. Remove it?
+    pub struct FocusChain {
+        pub focus_idx: Option<usize>,
+        pub focusables: Vec<FocusableRc>,
+    }
+
+    impl Focusable for FocusChain {
+        fn has_focus(&self) -> bool {
+            self.focus_idx.is_some()
+        }
+
+        fn defocus(&mut self) {
+            for f in self.focusables.iter_mut() {
+                f.borrow_mut().defocus();
+            }
+            self.focus_idx = None;
+        }
+        fn focus(&mut self) {
+            // Reset to get first widget in tree
+            self.focus_idx = None;
+            self.next_focus();
+        }
+
+        fn next_focus(&mut self) {
+            self.focus_idx = match self.focus_idx {
+                None => {
+                    // Start a new focus cycle
+                    self.focusables[0].borrow_mut().next_focus();
+                    Some(0)
+                }
+                Some(idx) => {
+                    // Advance the child tree
+                    self.focusables[idx].borrow_mut().next_focus();
+
+                    // Still same child tree that has focus?
+                    if self.focusables[idx].borrow().has_focus() {
+                        Some(idx)
+                    } else {
+                        // Child tree lost focus
+                        if idx == self.focusables.len() - 1 {
+                            // Last subtree lost focus, nothing left
+                            None
+                        } else {
+                            // Start traversing next subtree
+                            self.focusables[idx + 1].borrow_mut().next_focus();
+                            Some(idx + 1)
+                        }
+                    }
+                }
+            };
+        }
+    }
+
+    impl FocusChain {
+        pub fn new() -> Self {
+            Self {
+                focus_idx: None,
+                focusables: vec![],
+            }
+        }
+
+        pub fn push(&mut self, focusable: Rc<RefCell<dyn Focusable>>) {
+            self.focusables.push(focusable);
+        }
+    }
+
+    pub type FocusableRc = Rc<RefCell<dyn Focusable>>;
     pub trait Focusable {
         /// Has focus directly or if any of it's children has focus
         fn has_focus(&self) -> bool;
@@ -350,7 +425,6 @@ mod widget {
         fn next_focus(&mut self);
     }
 
-    // TODO : Can we get rid of the noisy Copy constrait here?
     /// A Widget is statefull and has the update() mechanism to mutate it's state.
     /// It create views that are entirely disconnected from itself (no back ref with a lifetime).
     pub trait Widget<Message, V: View<Message>>: Focusable {
@@ -412,9 +486,7 @@ mod runtime {
 
             // Update widgets
             while let Some(msg) = unprocessed_messages.pop() {
-                //let mut new_messages =
                 app.update(msg);
-                //unprocessed_messages.append(&mut new_messages);
             }
         }
     }
@@ -465,7 +537,7 @@ mod tests {
 
     #[test]
     fn spinner_rendering_test() {
-        let mut app = spinner::Spinner::new(0);
+        let app = spinner::Spinner::new(0);
         assert_eq!(app.value, 0);
 
         let view = app.view(Pos { r: 0, c: 0 });
@@ -473,7 +545,7 @@ mod tests {
         view.draw(&mut renderer);
         assert_eq!(renderer.out, " + 0 - ");
 
-        app.inc_btn.focus();
+        app.inc_btn.borrow_mut().focus();
         let view = app.view(Pos { r: 0, c: 0 });
         let mut renderer = TestRenderer::new();
         view.draw(&mut renderer);
