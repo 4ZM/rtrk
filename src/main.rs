@@ -8,7 +8,6 @@ mod app {
     use crate::spinner;
     use crate::spinner::{Spinner, SpinnerView};
     use crate::widget::{Focusable, View, Widget};
-    use itertools::Itertools;
 
     #[derive(Copy, Clone, Debug, PartialEq)]
     pub enum Message {
@@ -18,10 +17,12 @@ mod app {
 
     pub struct App {
         pub spin: Vec<Spinner>,
+        pub focus: Option<usize>,
     }
     impl App {
         pub fn new() -> Self {
             Self {
+                focus: None,
                 spin: vec![
                     Spinner::new(Pos { r: 0, c: 0 }, 23),
                     Spinner::new(Pos { r: 0, c: 10 }, 42),
@@ -34,27 +35,7 @@ mod app {
         fn update(&mut self, msg: Message) {
             match msg {
                 Message::Spinner(i, msg) => self.spin[i].update(msg),
-
-                // TODO : Require more generic focus mechanism
-                Message::NextFocus => {
-                    let spinners = self.spin.len();
-
-                    match self.spin.iter().find_position(|&s| s.has_focus()) {
-                        Some((focused_spinner_idx, _)) => {
-                            self.spin[focused_spinner_idx].update(spinner::Message::NextFocus);
-                            if !self.spin[focused_spinner_idx].has_focus() {
-                                // Moving on to next spinner unless it's the last
-                                if focused_spinner_idx != spinners - 1 {
-                                    self.spin[(focused_spinner_idx + 1usize) % spinners]
-                                        .update(spinner::Message::NextFocus);
-                                }
-                            }
-                        }
-                        None => {
-                            self.spin[0].update(spinner::Message::NextFocus);
-                        }
-                    }
-                }
+                Message::NextFocus => self.next_focus(),
             };
         }
 
@@ -64,7 +45,49 @@ mod app {
             }
         }
     }
-    impl Focusable for App {}
+    impl Focusable for App {
+        fn has_focus(&self) -> bool {
+            self.focus.is_some()
+        }
+
+        fn defocus(&mut self) {
+            for s in self.spin.iter_mut() {
+                s.defocus();
+            }
+            self.focus = None;
+        }
+        fn focus(&mut self) {
+            self.defocus();
+            self.update(Message::NextFocus);
+        }
+
+        fn next_focus(&mut self) {
+            self.focus = match self.focus {
+                None => {
+                    // Start a new focus cycle
+                    self.spin[0].next_focus();
+                    Some(0)
+                }
+                Some(idx) => {
+                    // Advance the child tree
+                    self.spin[idx].next_focus();
+
+                    // Still same child tree that has focus?
+                    if self.spin[idx].has_focus() {
+                        Some(idx)
+                    } else {
+                        // Child tree lost focus
+                        if idx == self.spin.len() - 1 {
+                            None
+                        } else {
+                            self.spin[idx + 1].next_focus();
+                            Some(idx + 1)
+                        }
+                    }
+                }
+            };
+        }
+    }
 
     pub struct AppView {
         spinners: Vec<SpinnerView>,
@@ -124,24 +147,11 @@ mod spinner {
         }
     }
     impl Widget<Message, SpinnerView> for Spinner {
-        // fn pos(&self) -> Pos {
-        //     self.pos
-        // }
-
         fn update(&mut self, msg: Message) {
             match msg {
                 Message::Increment => self.value += 1,
                 Message::Decrement => self.value -= 1,
-                Message::NextFocus if self.inc_btn.has_focus() => {
-                    self.inc_btn.defocus();
-                    self.dec_btn.focus();
-                }
-                Message::NextFocus if self.dec_btn.has_focus() => {
-                    self.dec_btn.defocus();
-                }
-                Message::NextFocus => {
-                    self.inc_btn.focus();
-                }
+                Message::NextFocus => self.next_focus(),
             }
         }
 
@@ -158,22 +168,25 @@ mod spinner {
             self.inc_btn.has_focus() || self.dec_btn.has_focus()
         }
 
-        // TODO DO we really need it? Only makes sense in polymorphic case...
-        // fn accepts_focus(&self) -> bool {
-        //     true
-        // }
-
+        fn next_focus(&mut self) {
+            if self.inc_btn.has_focus() {
+                self.inc_btn.defocus();
+                self.dec_btn.focus();
+            } else if self.dec_btn.has_focus() {
+                self.dec_btn.defocus();
+            } else {
+                self.inc_btn.focus();
+            }
+        }
         fn defocus(&mut self) {
             self.inc_btn.defocus();
             self.dec_btn.defocus();
         }
         fn focus(&mut self) {
-            self.inc_btn.focus(); // Randomly pick one to focus -- THIS IS WRONG
+            self.inc_btn.focus();
+            self.dec_btn.defocus();
         }
     }
-    // impl<Message: Copy> View<Message> for Spinner {
-    //     fn draw(&self, _renderer: &mut dyn crate::interaction::Renderer) {}
-    // }
 
     pub struct SpinnerView {
         inc_btn: ButtonView<Message>,
@@ -215,9 +228,6 @@ mod button {
         pub has_focus: bool,
     }
     impl<Message: Copy> Widget<Message, ButtonView<Message>> for Button<Message> {
-        // fn pos(&self) -> Pos {
-        //     self.pos
-        // }
         fn update(&mut self, _msg: Message) {}
         fn view(&self) -> ButtonView<Message> {
             ButtonView::<Message> {
@@ -257,9 +267,9 @@ mod button {
         fn has_focus(&self) -> bool {
             self.has_focus
         }
-        // fn accepts_focus(&self) -> bool {
-        //     true
-        // }
+        fn next_focus(&mut self) {
+            self.has_focus = !self.has_focus;
+        }
         fn focus(&mut self) {
             self.has_focus = true
         }
@@ -269,7 +279,6 @@ mod button {
     }
 
     // TODO Reduce verbosity of Message: Copy constraint?
-
     pub fn button<Message: Copy>(pos: Pos, text: &str, on_press: Message) -> Button<Message> {
         Button {
             pos,
@@ -304,16 +313,24 @@ mod label {
 }
 
 mod widget {
+    // TODO : Design issue: Does it make sense to split widget and view?
+    // If yes, how to reduce copy?
+    // If no, what are the implications
+
     use crate::interaction::{Event, Renderer};
 
     // TODO: Focusable as trait only make sense in polymorphic widget usecase. Remove it?
     pub trait Focusable {
+        /// Has focus directly or if any of it's children has focus
         fn has_focus(&self) -> bool {
             false
         }
 
-        fn focus(&mut self) {}
-        fn defocus(&mut self) {}
+        fn focus(&mut self);
+        fn defocus(&mut self);
+
+        /// Advance focus recursively
+        fn next_focus(&mut self);
     }
 
     // TODO : Can we get rid of the noisy Copy constrait here?
@@ -481,5 +498,17 @@ mod tests {
         // Can't activate a label
         let msg = lbl.on_event(interaction::Event::Activate);
         assert!(msg.is_empty());
+    }
+
+    #[test]
+    fn focus_helper_test() {
+        fn focus_helper(mut f: Vec<&mut dyn Focusable>) {
+            f[0].focus();
+        }
+
+        let mut b1 = button(Pos::default(), "BTN", 0);
+        let mut b2 = button(Pos::default(), "BTN", 0);
+
+        focus_helper(vec![&mut b1, &mut b2]);
     }
 }
