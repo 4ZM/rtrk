@@ -2,6 +2,13 @@ mod interaction;
 mod pos;
 mod term;
 
+// 1. TODO: Expand by adding reset-button in App
+// challenging for focus logic currently
+// 2. TODO: Expand by adding sum label in App
+// challenging with root state that depends on component states
+// 3. TODO: Expand by adding fraction of whole to spinner labels
+// challenging since top App state is needed further down.
+
 mod app {
     use crate::interaction::Event;
     use crate::pos::Pos;
@@ -23,11 +30,7 @@ mod app {
         pub fn new() -> Self {
             Self {
                 focus: None,
-                spin: vec![
-                    Spinner::new(Pos { r: 0, c: 0 }, 23),
-                    Spinner::new(Pos { r: 0, c: 10 }, 42),
-                    Spinner::new(Pos { r: 0, c: 20 }, 4711),
-                ],
+                spin: vec![Spinner::new(23), Spinner::new(42), Spinner::new(4711)],
             }
         }
     }
@@ -39,9 +42,21 @@ mod app {
             };
         }
 
-        fn view(&self) -> AppView {
+        fn view(&self, pos: Pos) -> AppView {
             AppView {
-                spinners: self.spin.iter().map(|s| s.view()).collect(),
+                spinners: self
+                    .spin
+                    .iter()
+                    .enumerate()
+                    .map(|(i, s)| {
+                        s.view(
+                            pos + Pos {
+                                r: 0,
+                                c: i as u16 * 10, // Horizontal spaced
+                            },
+                        )
+                    })
+                    .collect(),
             }
         }
     }
@@ -51,6 +66,7 @@ mod app {
         }
 
         fn defocus(&mut self) {
+            // TODO: children() can be used here
             for s in self.spin.iter_mut() {
                 s.defocus();
             }
@@ -62,6 +78,8 @@ mod app {
         }
 
         fn next_focus(&mut self) {
+            // TODO: children() can be used here for generic tree traversal
+
             self.focus = match self.focus {
                 None => {
                     // Start a new focus cycle
@@ -78,8 +96,10 @@ mod app {
                     } else {
                         // Child tree lost focus
                         if idx == self.spin.len() - 1 {
+                            // Last subtree lost focus, nothing left
                             None
                         } else {
+                            // Start traversing next subtree
                             self.spin[idx + 1].next_focus();
                             Some(idx + 1)
                         }
@@ -94,6 +114,7 @@ mod app {
     }
     impl View<Message> for AppView {
         fn draw(&self, renderer: &mut dyn crate::interaction::Renderer) {
+            // TODO: Children can be used generically here
             for s in self.spinners.iter() {
                 s.draw(renderer);
             }
@@ -103,6 +124,8 @@ mod app {
                 return vec![Message::NextFocus];
             }
 
+            // TODO children() can be used generically here. Or can it? Spinner message is not generic
+            // could have a ChildMessage routed by child ID or similar
             let mut msgs: Vec<Message> = vec![];
             for (i, s) in self.spinners.iter().enumerate() {
                 let new_msgs = s.on_event(e);
@@ -131,18 +154,16 @@ mod spinner {
     }
 
     pub struct Spinner {
-        pos: Pos,
         pub value: i64,               // TODO pub for test - ok?
         pub inc_btn: Button<Message>, // they have the focus state, so can't be just view
         pub dec_btn: Button<Message>,
     }
     impl Spinner {
-        pub fn new(pos: Pos, initial_value: i64) -> Self {
+        pub fn new(initial_value: i64) -> Self {
             Self {
-                pos,
                 value: initial_value,
-                inc_btn: button(pos + Pos { r: 0, c: 0 }, "+", Message::Increment),
-                dec_btn: button(pos + Pos { r: 2, c: 0 }, "-", Message::Decrement),
+                inc_btn: button("+", Message::Increment),
+                dec_btn: button("-", Message::Decrement),
             }
         }
     }
@@ -155,11 +176,11 @@ mod spinner {
             }
         }
 
-        fn view(&self) -> SpinnerView {
+        fn view(&self, pos: Pos) -> SpinnerView {
             SpinnerView {
-                lbl: label(self.pos + Pos { r: 1, c: 1 }, &self.value.to_string()),
-                inc_btn: self.inc_btn.view(),
-                dec_btn: self.dec_btn.view(),
+                lbl: label(pos + Pos { r: 1, c: 1 }, &self.value.to_string()),
+                inc_btn: self.inc_btn.view(pos + Pos { r: 0, c: 0 }),
+                dec_btn: self.dec_btn.view(pos + Pos { r: 2, c: 0 }),
             }
         }
     }
@@ -221,25 +242,24 @@ mod button {
     use crate::pos::Pos;
     use crate::widget::{Focusable, View, Widget};
 
-    pub struct Button<Message: Copy> {
+    pub struct Button<Message> {
         text: String,
         on_press: Message,
-        pos: Pos,
         pub has_focus: bool,
     }
     impl<Message: Copy> Widget<Message, ButtonView<Message>> for Button<Message> {
         fn update(&mut self, _msg: Message) {}
-        fn view(&self) -> ButtonView<Message> {
+        fn view(&self, pos: Pos) -> ButtonView<Message> {
             ButtonView::<Message> {
                 text: self.text.clone(),
                 on_press: self.on_press,
-                pos: self.pos,
+                pos,
                 has_focus: self.has_focus,
             }
         }
     }
 
-    pub struct ButtonView<Message: Copy> {
+    pub struct ButtonView<Message> {
         text: String,
         on_press: Message,
         pos: Pos,
@@ -263,7 +283,7 @@ mod button {
             }
         }
     }
-    impl<Message: Copy> Focusable for Button<Message> {
+    impl<Message> Focusable for Button<Message> {
         fn has_focus(&self) -> bool {
             self.has_focus
         }
@@ -279,9 +299,8 @@ mod button {
     }
 
     // TODO Reduce verbosity of Message: Copy constraint?
-    pub fn button<Message: Copy>(pos: Pos, text: &str, on_press: Message) -> Button<Message> {
+    pub fn button<Message>(text: &str, on_press: Message) -> Button<Message> {
         Button {
-            pos,
             text: text.to_string(),
             on_press,
             has_focus: false,
@@ -318,14 +337,12 @@ mod widget {
     // If no, what are the implications
 
     use crate::interaction::{Event, Renderer};
+    use crate::pos::Pos;
 
     // TODO: Focusable as trait only make sense in polymorphic widget usecase. Remove it?
     pub trait Focusable {
         /// Has focus directly or if any of it's children has focus
-        fn has_focus(&self) -> bool {
-            false
-        }
-
+        fn has_focus(&self) -> bool;
         fn focus(&mut self);
         fn defocus(&mut self);
 
@@ -336,9 +353,9 @@ mod widget {
     // TODO : Can we get rid of the noisy Copy constrait here?
     /// A Widget is statefull and has the update() mechanism to mutate it's state.
     /// It create views that are entirely disconnected from itself (no back ref with a lifetime).
-    pub trait Widget<Message: Copy, V: View<Message>>: Focusable {
+    pub trait Widget<Message, V: View<Message>>: Focusable {
         fn update(&mut self, msg: Message);
-        fn view(&self) -> V;
+        fn view(&self, pos: Pos) -> V;
     }
 
     /// A View can have data, but is stateless and immutable.  It's purpose is to interact with the
@@ -359,6 +376,7 @@ mod runtime {
     use crate::interaction;
     use crate::interaction::EventCollector;
     use crate::interaction::Renderer;
+    use crate::pos::Pos;
     use crate::term;
     use crate::widget::View;
     use crate::widget::Widget;
@@ -374,7 +392,7 @@ mod runtime {
 
         'app: loop {
             // Render state
-            let view = app.view();
+            let view = app.view(Pos { r: 0, c: 0 });
             renderer.clear();
             view.draw(&mut renderer);
             renderer.flush();
@@ -435,7 +453,7 @@ mod tests {
 
     #[test]
     fn spinner_state_update_test() {
-        let mut app = spinner::Spinner::new(Pos::default(), 0);
+        let mut app = spinner::Spinner::new(0);
         assert_eq!(app.value, 0);
 
         let _ = app.update(spinner::Message::Increment);
@@ -447,16 +465,16 @@ mod tests {
 
     #[test]
     fn spinner_rendering_test() {
-        let mut app = spinner::Spinner::new(Pos::default(), 0);
+        let mut app = spinner::Spinner::new(0);
         assert_eq!(app.value, 0);
 
-        let view = app.view();
+        let view = app.view(Pos { r: 0, c: 0 });
         let mut renderer = TestRenderer::new();
         view.draw(&mut renderer);
         assert_eq!(renderer.out, " + 0 - ");
 
         app.inc_btn.focus();
-        let view = app.view();
+        let view = app.view(Pos { r: 0, c: 0 });
         let mut renderer = TestRenderer::new();
         view.draw(&mut renderer);
         assert_eq!(renderer.out, "[+]0 - ");
@@ -464,10 +482,10 @@ mod tests {
 
     #[test]
     fn button_test() {
-        let mut btn = button(Pos { r: 0, c: 0 }, "BTN", 42);
+        let mut btn = button("BTN", 42);
 
         // Unless it's focused, it doesn't produce messages
-        let btn_view = btn.view();
+        let btn_view = btn.view(Pos { r: 0, c: 0 });
         assert!(btn_view.on_event(interaction::Event::Activate).is_empty());
 
         let mut renderer = TestRenderer::new();
@@ -476,7 +494,7 @@ mod tests {
 
         // When focused, it can be activated
         btn.focus();
-        let btn_view = btn.view();
+        let btn_view = btn.view(Pos { r: 0, c: 0 });
         let msg = btn_view.on_event(interaction::Event::Activate);
         assert_eq!(msg.len(), 1);
         assert_eq!(msg[0], 42);
@@ -506,8 +524,8 @@ mod tests {
             f[0].focus();
         }
 
-        let mut b1 = button(Pos::default(), "BTN", 0);
-        let mut b2 = button(Pos::default(), "BTN", 0);
+        let mut b1 = button("BTN", 0);
+        let mut b2 = button("BTN", 0);
 
         focus_helper(vec![&mut b1, &mut b2]);
     }
