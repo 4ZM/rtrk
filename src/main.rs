@@ -1,3 +1,5 @@
+use std::time::{Duration, Instant};
+
 use std::io;
 
 pub use crossterm::{
@@ -9,77 +11,133 @@ pub use crossterm::{
 
 use crossterm::event::KeyEventKind;
 
-struct Model {
-    playing: bool,
-}
-impl Model {
-    fn new() -> Self {
-        Model { playing: false }
-    }
-}
-
-// Should be member of the model?
-fn update(a: Action, m: &mut Model) {
-    match a {
-        Action::Play => m.playing = true,
-        Action::Stop => m.playing = false,
-        _ => {}
-    };
-}
-
-#[derive(Debug)]
 enum Action {
+    Tic,
+    NextFocus,
+    SelectCurrent,
     Play,
     Stop,
     Quit,
 }
 
-struct View {}
-impl View {}
-
-fn render<W: io::Write>(w: &mut W, m: &Model) -> io::Result<()> {
-    queue!(
-        w,
-        style::ResetColor,
-        terminal::Clear(ClearType::All),
-        cursor::Hide,
-        cursor::MoveTo(0, 0)
-    )?;
-
-    if m.playing {
-        queue!(w, style::Print("PLAYING"))?;
-    } else {
-        queue!(w, style::Print("STOPPED"))?;
-    }
-
-    w.flush()?;
-
-    Ok(())
+#[derive(Clone)]
+enum Widget {
+    StopButton,
+    PlayButton,
 }
 
-fn get_event() -> Action {
-    loop {
-        match dbg!(event::read()) {
-            Ok(Event::Key(KeyEvent {
-                code: KeyCode::Char('p'),
-                kind: KeyEventKind::Press,
-                modifiers: _,
-                state: _,
-            })) => return Action::Play,
-            Ok(Event::Key(KeyEvent {
-                code: KeyCode::Char('s'),
-                kind: KeyEventKind::Press,
-                modifiers: _,
-                state: _,
-            })) => return Action::Stop,
-            Ok(Event::Key(KeyEvent {
-                code: KeyCode::Char('q'),
-                kind: KeyEventKind::Press,
-                modifiers: _,
-                state: _,
-            })) => return Action::Quit,
+struct Model {
+    playing: bool,
+    text: String,
+    focus: Widget,
+}
+impl Model {
+    fn update(&mut self, a: Action) {
+        match a {
+            Action::Play => self.playing = true,
+            Action::Stop => self.playing = false,
+            Action::NextFocus => self.focus = Model::next_focus(self.focus.clone()),
+            Action::SelectCurrent => match self.focus {
+                Widget::PlayButton => self.playing = true,
+                Widget::StopButton => self.playing = false,
+            },
+            Action::Tic => {
+                if self.playing {
+                    self.scroll_text()
+                }
+            }
             _ => {}
+        };
+    }
+
+    fn scroll_text(&mut self) {
+        if let Some(c) = self.text.pop() {
+            self.text.insert(0, c);
         }
+    }
+
+    fn next_focus(w: Widget) -> Widget {
+        match w {
+            Widget::PlayButton => Widget::StopButton,
+            Widget::StopButton => Widget::PlayButton,
+        }
+    }
+
+    fn new() -> Self {
+        Model {
+            text: ".-''-._".to_string(),
+            playing: true,
+            focus: Widget::PlayButton,
+        }
+    }
+}
+
+struct View {}
+impl View {
+    fn render<W: io::Write>(&self, w: &mut W, m: &Model) -> io::Result<()> {
+        queue!(
+            w,
+            style::ResetColor,
+            terminal::Clear(ClearType::All),
+            cursor::Hide,
+            cursor::MoveTo(0, 0)
+        )?;
+
+        match m.focus {
+            Widget::PlayButton => queue!(w, style::Print("[>]"))?,
+            Widget::StopButton => queue!(w, style::Print(" > "))?,
+        }
+
+        queue!(w, style::Print(format!(" |{}| ", m.text)))?;
+
+        match m.focus {
+            Widget::PlayButton => queue!(w, style::Print(" . "))?,
+            Widget::StopButton => queue!(w, style::Print("[.]"))?,
+        }
+
+        w.flush()?;
+
+        Ok(())
+    }
+}
+
+fn get_event() -> Option<Action> {
+    if !event::poll(Duration::from_secs(0)).unwrap() {
+        return None;
+    }
+
+    match event::read() {
+        Ok(Event::Key(KeyEvent {
+            code: KeyCode::Tab,
+            kind: KeyEventKind::Press,
+            modifiers: _,
+            state: _,
+        })) => return Some(Action::NextFocus),
+        Ok(Event::Key(KeyEvent {
+            code: KeyCode::Enter,
+            kind: KeyEventKind::Press,
+            modifiers: _,
+            state: _,
+        })) => return Some(Action::SelectCurrent),
+        Ok(Event::Key(KeyEvent {
+            code: KeyCode::Char('p'),
+            kind: KeyEventKind::Press,
+            modifiers: _,
+            state: _,
+        })) => return Some(Action::Play),
+        Ok(Event::Key(KeyEvent {
+            code: KeyCode::Char('s'),
+            kind: KeyEventKind::Press,
+            modifiers: _,
+            state: _,
+        })) => return Some(Action::Stop),
+        Ok(Event::Key(KeyEvent {
+            code: KeyCode::Char('q'),
+            kind: KeyEventKind::Press,
+            modifiers: _,
+            state: _,
+        })) => return Some(Action::Quit),
+        _ => return None,
     }
 }
 
@@ -90,15 +148,29 @@ fn start() -> io::Result<()> {
 
     terminal::enable_raw_mode()?;
 
+    let view = View {};
     let mut m: Model = Model::new();
-    render(&mut stdout, &m)?;
+    view.render(&mut stdout, &m)?;
+
+    let mut timer = Instant::now();
 
     loop {
-        match get_event() {
-            Action::Quit => break,
-            a => update(a, &mut m),
+        // Timer event
+        let elapsed = timer.elapsed().as_secs_f32();
+        if elapsed > 0.1 {
+            m.update(Action::Tic);
+            timer = Instant::now();
         }
-        render(&mut stdout, &m)?;
+
+        // User input
+        match get_event() {
+            Some(Action::Quit) => break,
+            Some(a) => m.update(a),
+            None => {}
+        }
+
+        view.render(&mut stdout, &m)?;
+        std::thread::sleep(Duration::from_millis(10));
     }
 
     execute!(
