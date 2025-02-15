@@ -149,6 +149,18 @@ impl EventCollector for CrosstermEventCollector {
                 state: _,
             })) => return vec![crate::interaction::Event::Right],
             Ok(crossterm::event::Event::Key(KeyEvent {
+                code: KeyCode::Up,
+                kind: KeyEventKind::Press,
+                modifiers: _,
+                state: _,
+            })) => return vec![crate::interaction::Event::Up],
+            Ok(crossterm::event::Event::Key(KeyEvent {
+                code: KeyCode::Down,
+                kind: KeyEventKind::Press,
+                modifiers: _,
+                state: _,
+            })) => return vec![crate::interaction::Event::Down],
+            Ok(crossterm::event::Event::Key(KeyEvent {
                 code: KeyCode::Char(c),
                 kind: KeyEventKind::Press,
                 modifiers: _,

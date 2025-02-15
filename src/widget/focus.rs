@@ -87,4 +87,12 @@ impl FocusChain {
     pub fn push(&mut self, focusable: Rc<RefCell<dyn super::Focusable>>) {
         self.focusables.push(focusable);
     }
+
+    pub fn clear(&mut self) {
+        self.focusables
+            .iter()
+            .for_each(|f| f.borrow_mut().defocus());
+        self.focusables.clear();
+        self.focus_idx = None;
+    }
 }

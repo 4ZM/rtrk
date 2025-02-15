@@ -13,6 +13,8 @@ pub enum Event {
     DelBack,
     Right,
     Left,
+    Up,
+    Down,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]

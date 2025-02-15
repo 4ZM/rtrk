@@ -264,6 +264,8 @@ mod voice_list {
     #[derive(Copy, Clone, Debug, PartialEq)]
     pub enum Message {
         NextFocus,
+        Up,
+        Down,
         Voice(usize, voice::Message),
     }
 
@@ -297,6 +299,24 @@ mod voice_list {
         fn update(&mut self, msg: Message) {
             match msg {
                 Message::NextFocus => self.next_focus(),
+                Message::Up => {
+                    if self.selected_voice_idx > 0 {
+                        self.selected_voice_idx -= 1;
+                    } else {
+                        self.selected_voice_idx = self.voices.len();
+                    }
+                    self.focus_chain.clear();
+                    self.focus_chain
+                        .push(self.voices[self.selected_voice_idx].clone() as FocusableRc);
+                    self.focus_chain.next_focus();
+                }
+                Message::Down => {
+                    self.selected_voice_idx = (self.selected_voice_idx + 1) % self.voices.len();
+                    self.focus_chain.clear();
+                    self.focus_chain
+                        .push(self.voices[self.selected_voice_idx].clone() as FocusableRc);
+                    self.focus_chain.next_focus();
+                }
                 Message::Voice(idx, vm) => self.voices[idx].borrow_mut().update(vm),
             };
         }
@@ -354,6 +374,12 @@ mod voice_list {
         fn on_event(&self, e: Event) -> Vec<Message> {
             if let Event::NextFocus = e {
                 return vec![Message::NextFocus];
+            }
+
+            match e {
+                Event::Up => return vec![Message::Up],
+                Event::Down => return vec![Message::Down],
+                _ => {}
             }
 
             let mut msgs: Vec<Message> = vec![];
