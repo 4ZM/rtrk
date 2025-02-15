@@ -1,4 +1,6 @@
+mod interaction;
 mod pos;
+mod term;
 
 mod app {
     use crate::interaction::Event;
@@ -29,13 +31,11 @@ mod app {
         }
     }
     impl Widget<Message, AppView> for App {
-        // fn pos(&self) -> Pos {
-        //     self.pos
-        // }
-
         fn update(&mut self, msg: Message) {
             match msg {
                 Message::Spinner(i, msg) => self.spin[i].update(msg),
+
+                // TODO : Require more generic focus mechanism
                 Message::NextFocus => {
                     let spinners = self.spin.len();
 
@@ -64,19 +64,7 @@ mod app {
             }
         }
     }
-    impl Focusable for App {
-        // fn has_focus(&self) -> bool {
-        //     true
-        // }
-        // fn accepts_focus(&self) -> bool {
-        //     true
-        // }
-        // fn defocus(&mut self) {}
-        // fn focus(&mut self) {}
-    }
-    // impl<Message: Copy> View<Message> for App {
-    //     fn draw(&self, _renderer: &mut dyn crate::interaction::Renderer) {}
-    // }
+    impl Focusable for App {}
 
     pub struct AppView {
         spinners: Vec<SpinnerView>,
@@ -317,26 +305,22 @@ mod label {
 
 mod widget {
     use crate::interaction::{Event, Renderer};
-    //use crate::pos::Pos;
 
+    // TODO: Focusable as trait only make sense in polymorphic widget usecase. Remove it?
     pub trait Focusable {
         fn has_focus(&self) -> bool {
             false
         }
-        // fn accepts_focus(&self) -> bool {
-        //     false
-        // }
+
         fn focus(&mut self) {}
         fn defocus(&mut self) {}
     }
 
+    // TODO : Can we get rid of the noisy Copy constrait here?
     /// A Widget is statefull and has the update() mechanism to mutate it's state.
     /// It create views that are entirely disconnected from itself (no back ref with a lifetime).
     pub trait Widget<Message: Copy, V: View<Message>>: Focusable {
-        //fn pos(&self) -> Pos;
-
         fn update(&mut self, msg: Message);
-
         fn view(&self) -> V;
     }
 
@@ -349,128 +333,6 @@ mod widget {
             vec![]
         }
         fn draw(&self, _renderer: &mut dyn Renderer);
-    }
-}
-
-mod interaction {
-    use crate::pos::Pos;
-
-    #[derive(Copy, Clone, Debug, PartialEq)]
-    pub enum Event {
-        Next,
-        //Back, // TODO Add back support
-        Activate,
-        Quit,
-        Char(char),
-    }
-
-    pub trait Renderer {
-        fn clear(&mut self);
-        fn render_str(&mut self, _pos: Pos, _text: &str);
-        fn flush(&mut self);
-    }
-
-    pub trait EventCollector {
-        fn poll_events(&self) -> Vec<crate::interaction::Event>;
-    }
-}
-
-mod term {
-    // Crossterm adapter for the interactions
-    use crate::interaction::EventCollector;
-    use crate::interaction::Renderer;
-    use crate::pos::Pos;
-    use crossterm::event::KeyEventKind;
-    use std::io;
-    use std::time::Duration;
-
-    pub use crossterm::{
-        cursor,
-        event::{self, KeyCode, KeyEvent},
-        execute, queue, style,
-        terminal::{self, ClearType},
-    };
-
-    pub struct CrosstermRenderer<W: io::Write> {
-        w: W,
-    }
-    impl<W: io::Write> CrosstermRenderer<W> {
-        pub fn new(mut w: W) -> CrosstermRenderer<W> {
-            //let mut stdout = io::stdout();
-            execute!(w.by_ref(), terminal::EnterAlternateScreen)
-                .expect("Unable to create CrosstermRenderer");
-            terminal::enable_raw_mode().expect("Unable to create CrosstermRenderer");
-
-            CrosstermRenderer { w }
-        }
-    }
-    impl<W: io::Write> Drop for CrosstermRenderer<W> {
-        fn drop(&mut self) {
-            execute!(
-                self.w,
-                style::ResetColor,
-                cursor::Show,
-                terminal::LeaveAlternateScreen
-            )
-            .expect("Unable to drop CrosstermRenderer");
-
-            terminal::disable_raw_mode().expect("Unable to drop CrosstermRenderer");
-        }
-    }
-    impl<W: io::Write> Renderer for CrosstermRenderer<W> {
-        fn clear(&mut self) {
-            queue!(self.w, terminal::Clear(ClearType::All),).expect("Unable to clear terminal");
-        }
-        fn flush(&mut self) {
-            self.w.flush().expect("Unable to flush writer");
-        }
-
-        fn render_str(&mut self, Pos { r, c }: Pos, text: &str) {
-            let _ = queue!(
-                self.w,
-                cursor::Hide,
-                cursor::MoveTo(c, r),
-                style::Print(format!("{}", text))
-            );
-        }
-    }
-
-    pub struct CrosstermEventCollector {}
-    impl EventCollector for CrosstermEventCollector {
-        fn poll_events(&self) -> Vec<crate::interaction::Event> {
-            if !event::poll(Duration::from_secs(0)).unwrap() {
-                // TODO handle error
-                return vec![];
-            }
-
-            match event::read() {
-                Ok(crossterm::event::Event::Key(KeyEvent {
-                    code: KeyCode::Esc,
-                    kind: KeyEventKind::Press,
-                    modifiers: _,
-                    state: _,
-                })) => return vec![crate::interaction::Event::Quit],
-                Ok(crossterm::event::Event::Key(KeyEvent {
-                    code: KeyCode::Tab,
-                    kind: KeyEventKind::Press,
-                    modifiers: _,
-                    state: _,
-                })) => return vec![crate::interaction::Event::Next],
-                Ok(crossterm::event::Event::Key(KeyEvent {
-                    code: KeyCode::Enter,
-                    kind: KeyEventKind::Press,
-                    modifiers: _,
-                    state: _,
-                })) => return vec![crate::interaction::Event::Activate],
-                Ok(crossterm::event::Event::Key(KeyEvent {
-                    code: KeyCode::Char(c),
-                    kind: KeyEventKind::Press,
-                    modifiers: _,
-                    state: _,
-                })) => return vec![crate::interaction::Event::Char(c)],
-                _ => vec![],
-            }
-        }
     }
 }
 
@@ -555,20 +417,20 @@ mod tests {
     }
 
     #[test]
-    fn basic_state_update_test() {
-        let mut app = app::App::new();
+    fn spinner_state_update_test() {
+        let mut app = spinner::Spinner::new(Pos::default(), 0);
         assert_eq!(app.value, 0);
 
-        let _ = app.update(app::Message::Increment);
-        app.update(app::Message::Increment);
-        app.update(app::Message::Decrement);
+        let _ = app.update(spinner::Message::Increment);
+        app.update(spinner::Message::Increment);
+        app.update(spinner::Message::Decrement);
 
         assert_eq!(app.value, 1);
     }
 
     #[test]
-    fn spinner_test() {
-        let mut app = app::App::new();
+    fn spinner_rendering_test() {
+        let mut app = spinner::Spinner::new(Pos::default(), 0);
         assert_eq!(app.value, 0);
 
         let view = app.view();
@@ -606,15 +468,11 @@ mod tests {
         let mut renderer = TestRenderer::new();
         btn_view.draw(&mut renderer);
         assert_eq!(renderer.out, "[BTN]");
-
-        // Nothing to do for button update
-        let msg = btn.update(42);
-        assert!(msg.is_empty());
     }
 
     #[test]
     fn label_test() {
-        let mut lbl = label(Pos { r: 0, c: 0 }, "LBL");
+        let lbl = label(Pos { r: 0, c: 0 }, "LBL");
 
         let mut renderer = TestRenderer::new();
         lbl.draw(&mut renderer);
