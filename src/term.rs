@@ -1,8 +1,10 @@
 // Crossterm adapter for the interactions
 use crate::interaction::EventCollector;
 use crate::interaction::Renderer;
+use crate::interaction::Style;
 use crate::pos::Pos;
 use crossterm::event::KeyEventKind;
+use crossterm::style::ResetColor;
 use std::io;
 use std::time::Duration;
 
@@ -10,6 +12,7 @@ pub use crossterm::{
     cursor,
     event::{self, KeyCode, KeyEvent},
     execute, queue, style,
+    style::{Attribute, Color, SetAttribute, SetBackgroundColor, SetForegroundColor},
     terminal::{self, ClearType},
 };
 
@@ -18,7 +21,6 @@ pub struct CrosstermRenderer<W: io::Write> {
 }
 impl<W: io::Write> CrosstermRenderer<W> {
     pub fn new(mut w: W) -> CrosstermRenderer<W> {
-        //let mut stdout = io::stdout();
         execute!(w.by_ref(), terminal::EnterAlternateScreen)
             .expect("Unable to create CrosstermRenderer");
         terminal::enable_raw_mode().expect("Unable to create CrosstermRenderer");
@@ -52,8 +54,35 @@ impl<W: io::Write> Renderer for CrosstermRenderer<W> {
             self.w,
             cursor::Hide,
             cursor::MoveTo(c, r),
-            style::Print(format!("{}", text))
+            SetForegroundColor(Color::Rgb { r: 0, g: 255, b: 0 }),
+            style::Print(format!("{}", text)),
         );
+    }
+
+    fn render_fmt_str(&mut self, Pos { r, c }: Pos, text: &str, fmt: Style) {
+        let _ = queue!(self.w, cursor::Hide, cursor::MoveTo(c, r),);
+
+        if fmt == Style::Invert {
+            let _ = queue!(
+                self.w,
+                SetForegroundColor(Color::Black),
+                SetBackgroundColor(Color::Rgb { r: 0, g: 255, b: 0 }),
+                SetAttribute(Attribute::Bold),
+            );
+        }
+        if fmt == Style::Highlight {
+            let _ = queue!(
+                self.w,
+                SetForegroundColor(Color::Rgb { r: 0, g: 255, b: 0 }),
+                SetBackgroundColor(Color::Rgb { r: 0, g: 60, b: 0 }),
+            );
+        }
+
+        let _ = queue!(self.w, style::Print(format!("{}", text)),);
+
+        if fmt != Style::Default {
+            let _ = queue!(self.w, SetAttribute(Attribute::Reset), ResetColor,);
+        }
     }
 }
 
@@ -101,7 +130,7 @@ impl EventCollector for CrosstermEventCollector {
                 kind: KeyEventKind::Press,
                 modifiers: _,
                 state: _,
-            })) => return vec![crate::interaction::Event::Del],
+            })) => return vec![crate::interaction::Event::DelBack],
             Ok(crossterm::event::Event::Key(KeyEvent {
                 code: KeyCode::Left,
                 kind: KeyEventKind::Press,

@@ -2,13 +2,6 @@ mod interaction;
 mod pos;
 mod term;
 
-// 1. DONE: Expand by adding reset-button in App
-// challenging for focus logic currently
-// 2. DONE: Expand by adding sum label in App
-// challenging with root state that depends on component states
-// 3. DONE: Expand by adding fraction of whole to spinner labels
-// challenging since top App state is needed further down.
-
 mod app {
     use crate::button::{button_rc, ButtonRc, ButtonView};
     use crate::impl_focusable_with_focuschain;
@@ -20,13 +13,13 @@ mod app {
     use crate::textbox;
     use crate::textbox::{textbox_rc, TextBoxRc, TextBoxView};
     use crate::widget::{FocusChain, Focusable, FocusableRc, View, Widget};
+
     #[derive(Copy, Clone, Debug, PartialEq)]
     pub enum Message {
         Reset,
         NextFocus,
         Spinner(usize, spinner::Message),
         Text(textbox::Message),
-        OnText,
     }
 
     pub struct App {
@@ -47,8 +40,7 @@ mod app {
                 .collect();
             let reset_btn = button_rc("RST", Message::Reset);
 
-            let n_from_txt = 123;
-            let txt = textbox_rc(&n_from_txt.to_string());
+            let txt = textbox_rc(10);
 
             let mut focus_chain = FocusChain::new();
             focus_chain.push(txt.clone() as FocusableRc);
@@ -62,7 +54,7 @@ mod app {
                 spin,
                 reset_btn,
                 txt,
-                n_from_txt: Some(n_from_txt),
+                n_from_txt: None,
             }
         }
 
@@ -93,15 +85,8 @@ mod app {
                 Message::Text(m) => {
                     self.txt.borrow_mut().update(m);
 
-                    self.n_from_txt = match self.txt.borrow().text().parse::<i64>() {
+                    self.n_from_txt = match self.txt.borrow().text().trim().parse::<i64>() {
                         Ok(n) if n >= 0 && n < 256 => Some(n),
-                        _ => None,
-                    }
-                }
-                Message::OnText => {
-                    // New text was commited
-                    self.n_from_txt = match self.txt.borrow().text().parse::<i64>() {
-                        Ok(val) => Some(val),
                         _ => None,
                     }
                 }
@@ -200,7 +185,6 @@ mod spinner {
         SetValue(i64),
     }
 
-    // TODO pub for test - ok?
     pub struct Spinner {
         global_sum: i64, // Or could use fraction here?
         value: i64,
@@ -395,7 +379,7 @@ mod label {
 }
 
 mod textbox {
-    use crate::interaction::{Event, Renderer};
+    use crate::interaction::{Event, Renderer, Style};
     use crate::pos::Pos;
     use crate::widget::{Focusable, View, Widget};
     use std::cell::RefCell;
@@ -405,16 +389,26 @@ mod textbox {
     pub enum Message {
         EnterChar(char),
         Del,
+        DelBack,
         CursorLeft,
         CursorRight,
     }
 
     pub struct TextBox {
+        width: usize,
+        carret_idx: usize,
         text: String,
         has_focus: bool,
-        //on_text: OnTextMessage,
     }
     impl TextBox {
+        pub fn new(width: usize) -> Self {
+            Self {
+                width,
+                carret_idx: 0,
+                text: " ".repeat(width).to_string(),
+                has_focus: false,
+            }
+        }
         pub fn text(&self) -> &str {
             &self.text
         }
@@ -424,23 +418,38 @@ mod textbox {
         fn update(&mut self, msg: Message) {
             match msg {
                 Message::EnterChar(c) => {
-                    self.text.push(c);
+                    self.text
+                        .replace_range(self.carret_idx..self.carret_idx + 1, &c.to_string());
+
+                    if self.carret_idx < self.width - 1 {
+                        self.carret_idx += 1;
+                    }
                 }
                 Message::Del => {
-                    self.text.pop();
+                    self.text
+                        .replace_range(self.carret_idx..self.carret_idx + 1, " ");
                 }
-                Message::CursorRight => {}
-                Message::CursorLeft => {}
-                _ => {}
+                Message::DelBack => {
+                    if self.carret_idx > 0 {
+                        self.carret_idx -= 1;
+                    }
+                    self.text
+                        .replace_range(self.carret_idx..self.carret_idx + 1, " ");
+                }
+                Message::CursorRight => {
+                    self.carret_idx = (self.carret_idx + 1) % self.width;
+                }
+                Message::CursorLeft => {
+                    if self.carret_idx == 0 {
+                        self.carret_idx = self.width - 1;
+                    } else {
+                        self.carret_idx -= 1;
+                    }
+                }
             }
         }
         fn view(&self, pos: Pos) -> TextBoxView {
-            TextBoxView {
-                pos,
-                text: self.text.clone(),
-                has_focus: self.has_focus,
-                //    on_text: self.on_text,
-            }
+            TextBoxView::new(pos, self.carret_idx, &self.text, self.has_focus)
         }
     }
     impl Focusable for TextBox {
@@ -462,7 +471,18 @@ mod textbox {
         pos: Pos,
         text: String,
         has_focus: bool,
-        //on_text: Message,
+        carret_idx: usize,
+    }
+
+    impl TextBoxView {
+        fn new(pos: Pos, carret_idx: usize, text: &str, has_focus: bool) -> Self {
+            Self {
+                pos,
+                carret_idx,
+                text: text.to_string().replace(" ", "-"),
+                has_focus,
+            }
+        }
     }
     impl View<Message> for TextBoxView {
         fn on_event(&self, e: Event) -> Vec<Message> {
@@ -470,43 +490,57 @@ mod textbox {
                 return vec![];
             }
 
-            let text_update_msg = match e {
-                // Emit on text
-                Event::Activate | Event::NextFocus | Event::PrevFocus => vec![],
-                _ => vec![],
-            };
-
             let msgs = match e {
                 Event::Activate => vec![],
                 Event::Char(c) => vec![Message::EnterChar(c)],
-                Event::Right => vec![],
-                Event::Left => vec![],
+                Event::Left => vec![Message::CursorLeft],
+                Event::Right => vec![Message::CursorRight],
                 Event::Del => vec![Message::Del],
+                Event::DelBack => vec![Message::DelBack],
                 _ => vec![],
             };
 
-            vec![text_update_msg, msgs].concat()
+            msgs
         }
+
         fn draw(&self, renderer: &mut dyn Renderer) {
             if self.has_focus {
-                renderer.render_str(self.pos, format!("[{}]", &self.text).as_str());
+                renderer.render_fmt_str(
+                    self.pos,
+                    format!("{}", &self.text[..self.carret_idx]).as_str(),
+                    Style::Highlight,
+                );
+                renderer.render_fmt_str(
+                    self.pos
+                        + Pos {
+                            r: 0,
+                            c: self.carret_idx as u16,
+                        },
+                    format!("{}", &self.text[self.carret_idx..self.carret_idx + 1]).as_str(),
+                    Style::Invert,
+                );
+                renderer.render_fmt_str(
+                    self.pos
+                        + Pos {
+                            r: 0,
+                            c: self.carret_idx as u16 + 1,
+                        },
+                    format!("{}", &self.text[self.carret_idx + 1..]).as_str(),
+                    Style::Highlight,
+                );
             } else {
-                renderer.render_str(self.pos, format!(" {} ", &self.text).as_str());
+                renderer.render_str(self.pos, format!("{}", &self.text).as_str());
             }
         }
     }
 
-    pub fn textbox(text: &str) -> TextBox {
-        TextBox {
-            text: text.to_string(),
-            //on_text,
-            has_focus: false,
-        }
+    pub fn textbox(width: usize) -> TextBox {
+        TextBox::new(width)
     }
 
     pub type TextBoxRc = Rc<RefCell<TextBox>>;
-    pub fn textbox_rc(text: &str) -> TextBoxRc {
-        Rc::new(RefCell::new(textbox(text)))
+    pub fn textbox_rc(width: usize) -> TextBoxRc {
+        Rc::new(RefCell::new(textbox(width)))
     }
 }
 
@@ -641,6 +675,7 @@ mod runtime {
     use crate::term;
     use crate::widget::View;
     use crate::widget::Widget;
+    use std::collections::VecDeque;
     use std::time::Duration;
 
     // Runtime
@@ -661,18 +696,17 @@ mod runtime {
             std::thread::sleep(Duration::from_millis(20));
 
             // Get UI event interactions
-            let mut unprocessed_messages: Vec<app::Message> = vec![];
+            let mut unprocessed_messages = VecDeque::<app::Message>::from([]);
             for event in event_collector.poll_events() {
-                let mut event_messages = match event {
+                let event_messages = match event {
                     interaction::Event::Quit => break 'app,
                     _ => view.on_event(event),
                 };
-
-                unprocessed_messages.append(&mut event_messages);
+                unprocessed_messages.extend(&event_messages);
             }
 
             // Update widgets
-            while let Some(msg) = unprocessed_messages.pop() {
+            while let Some(msg) = unprocessed_messages.pop_front() {
                 app.update(msg);
             }
         }
@@ -686,7 +720,7 @@ fn main() {
 #[cfg(test)]
 mod tests {
 
-    use interaction::Renderer;
+    use interaction::*;
 
     use super::button::*;
     use super::label::*;
@@ -706,6 +740,9 @@ mod tests {
         fn clear(&mut self) {}
         fn flush(&mut self) {}
         fn render_str(&mut self, _pos: Pos, text: &str) {
+            self.out += text;
+        }
+        fn render_fmt_str(&mut self, _pos: Pos, text: &str, _style: Style) {
             self.out += text;
         }
     }

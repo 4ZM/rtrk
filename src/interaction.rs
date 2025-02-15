@@ -10,13 +10,22 @@ pub enum Event {
     Quit,
     Char(char),
     Del,
+    DelBack,
     Right,
     Left,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum Style {
+    Default,
+    Invert,
+    Highlight,
 }
 
 pub trait Renderer {
     fn clear(&mut self);
     fn render_str(&mut self, _pos: Pos, _text: &str);
+    fn render_fmt_str(&mut self, _pos: Pos, _text: &str, _fmt: Style);
     fn flush(&mut self);
 }
 
