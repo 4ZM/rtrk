@@ -1,3 +1,4 @@
+mod exploration;
 mod ui;
 
 fn main() {
