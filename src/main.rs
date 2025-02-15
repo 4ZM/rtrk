@@ -1,13 +1,17 @@
 mod pos;
 
 mod app {
+    use std::num::IntErrorKind;
+
     use crate::button::{button, Button, ButtonView};
+    use crate::interaction::Event;
     use crate::label::{label, Label};
     use crate::pos::Pos;
     use crate::widget::{Focusable, View, Widget};
 
     #[derive(Copy, Clone, Debug, PartialEq)]
     pub enum Message {
+        NextFocus,
         Increment,
         Decrement,
     }
@@ -38,6 +42,16 @@ mod app {
             match msg {
                 Message::Increment => self.value += 1,
                 Message::Decrement => self.value -= 1,
+                Message::NextFocus if self.inc_btn.has_focus() => {
+                    self.inc_btn.defocus();
+                    self.dec_btn.focus();
+                }
+                Message::NextFocus if self.dec_btn.has_focus() => {
+                    self.dec_btn.defocus();
+                }
+                Message::NextFocus => {
+                    self.inc_btn.focus();
+                }
             }
             vec![]
         }
@@ -50,7 +64,22 @@ mod app {
             }
         }
     }
-    impl Focusable for App {}
+    impl Focusable for App {
+        fn has_focus(&self) -> bool {
+            true
+        }
+        fn accepts_focus(&self) -> bool {
+            true
+        }
+
+        fn defocus(&mut self) {
+            self.inc_btn.defocus();
+            self.dec_btn.defocus();
+        }
+        fn focus(&mut self) {
+            self.inc_btn.focus(); // Randomly pick one to focus -- THIS IS WRONG
+        }
+    }
     impl<Message: Copy> View<Message> for App {
         fn draw(&self, _renderer: &mut dyn crate::interaction::Renderer) {}
     }
@@ -66,8 +95,18 @@ mod app {
             self.lbl.draw(renderer);
             self.dec_btn.draw(renderer);
         }
-        fn on_event(&self, e: crate::interaction::Event) -> Vec<Message> {
-            vec![self.inc_btn.on_event(e), self.dec_btn.on_event(e)].concat()
+        fn on_event(&self, e: Event) -> Vec<Message> {
+            let focus_msg = match e {
+                Event::Next => vec![Message::NextFocus],
+                _ => vec![],
+            };
+
+            vec![
+                focus_msg,
+                self.inc_btn.on_event(e),
+                self.dec_btn.on_event(e),
+            ]
+            .concat()
         }
     }
 }
@@ -82,7 +121,7 @@ mod button {
         text: String,
         on_press: Message,
         pos: Pos,
-        has_focus: bool,
+        pub has_focus: bool,
     }
     impl<Message: Copy> Widget<Message, ButtonView<Message>> for Button<Message> {
         fn pos(&self) -> Pos {
@@ -126,6 +165,9 @@ mod button {
         }
     }
     impl<Message: Copy> Focusable for Button<Message> {
+        fn has_focus(&self) -> bool {
+            self.has_focus
+        }
         fn accepts_focus(&self) -> bool {
             true
         }
@@ -177,6 +219,9 @@ mod widget {
     use crate::pos::Pos;
 
     pub trait Focusable {
+        fn has_focus(&self) -> bool {
+            false
+        }
         fn accepts_focus(&self) -> bool {
             false
         }
@@ -350,6 +395,7 @@ mod runtime {
         'app: loop {
             // Render state
             let view = app.view();
+            renderer.clear();
             view.draw(&mut renderer);
             renderer.flush();
 
@@ -426,13 +472,13 @@ mod tests {
         let view = app.view();
         let mut renderer = TestRenderer::new();
         view.draw(&mut renderer);
-        assert_eq!(renderer.out, " +  - ");
+        assert_eq!(renderer.out, " + 0 - ");
 
         app.inc_btn.focus();
         let view = app.view();
         let mut renderer = TestRenderer::new();
         view.draw(&mut renderer);
-        assert_eq!(renderer.out, "[+] - ");
+        assert_eq!(renderer.out, "[+]0 - ");
     }
 
     #[test]
@@ -468,22 +514,12 @@ mod tests {
     fn label_test() {
         let mut lbl = label(Pos { r: 0, c: 0 }, "LBL");
 
-        // Unless it's focused, it doesn't produce messages
-        let lbl_view = lbl.view();
-
         let mut renderer = TestRenderer::new();
-        lbl_view.draw(&mut renderer);
+        lbl.draw(&mut renderer);
         assert_eq!(renderer.out, "LBL");
 
-        // Can't focus a label
-        assert!(!lbl.accepts_focus());
-
         // Can't activate a label
-        let msg = lbl_view.on_event(interaction::Event::Activate);
-        assert!(msg.is_empty());
-
-        // Nothing to do for label update
-        let msg = lbl.update(());
+        let msg = lbl.on_event(interaction::Event::Activate);
         assert!(msg.is_empty());
     }
 }
