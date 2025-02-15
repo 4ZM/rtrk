@@ -7,6 +7,13 @@ pub use crossterm::{
     terminal::{self, ClearType},
 };
 
+pub trait View<W: io::Write> {
+    fn render(&self, vm: &ViewModel, w: &mut W) -> io::Result<()>;
+    fn render_sound_list(&self, vm: &ViewModel, w: &mut W) -> io::Result<()>;
+    fn render_tracks(&self, vm: &ViewModel, w: &mut W) -> io::Result<()>;
+    fn render_sound(&self, snd_idx: u8, vm: &ViewModel, w: &mut W) -> io::Result<()>;
+}
+
 const SKIN: &str = r#"
 ┏━━━━━━━━━[ rtrk ]━━━━━━━━━━━━━━━━━━━━━━━━━━ , ━━━━━━ [v . ] ━━━ =^..^= ━━━━━━━┓
 ┃                                     ______/ \_ _/\______,___/\ ___' _____,   ┃
@@ -43,7 +50,7 @@ fn fmt_2(val: Option<u8>) -> String {
         None => "--".to_string(),
     }
 }
-pub struct View {
+pub struct MainView {
     pub skin: &'static [&'static str],
 
     pub version_pos: Pos,
@@ -56,25 +63,8 @@ pub struct View {
     //pub track_spacing: u8,
 }
 
-impl View {
-    pub fn new() -> Self {
-        let split_skin = SKIN.lines().skip(1).collect::<Vec<_>>().leak();
-
-        View {
-            skin: split_skin,
-            version_pos: Pos { r: 0, c: 56 },
-            sound_list_pos: Pos { r: 2, c: 3 },
-            sounds_list_height: 6,
-            track_list_pos: Pos { r: 14, c: 2 },
-            track_list_height: 5,
-            //track_spacing: 5,
-        }
-    }
-
-    fn render_tracks<W>(&self, vm: &ViewModel, w: &mut W) -> io::Result<()>
-    where
-        W: io::Write,
-    {
+impl<W: io::Write> View<W> for MainView {
+    fn render_tracks(&self, vm: &ViewModel, w: &mut W) -> io::Result<()> {
         let pos = &self.track_list_pos;
         queue!(w, cursor::MoveTo(pos.c, pos.r))?;
 
@@ -92,10 +82,7 @@ impl View {
         Ok(())
     }
 
-    fn render_sound_list<W>(&self, vm: &ViewModel, w: &mut W) -> io::Result<()>
-    where
-        W: io::Write,
-    {
+    fn render_sound_list(&self, vm: &ViewModel, w: &mut W) -> io::Result<()> {
         let pos = &self.sound_list_pos;
 
         let sl_start = vm.sounds_list_active;
@@ -111,10 +98,7 @@ impl View {
         Ok(())
     }
 
-    fn render_sound<W>(&self, snd_idx: u8, vm: &ViewModel, w: &mut W) -> io::Result<()>
-    where
-        W: io::Write,
-    {
+    fn render_sound(&self, snd_idx: u8, vm: &ViewModel, w: &mut W) -> io::Result<()> {
         let snd = &vm.sounds[snd_idx as usize];
 
         // 00 . - -------- ------
@@ -139,10 +123,7 @@ impl View {
         Ok(())
     }
 
-    pub fn render<W>(&self, vm: &ViewModel, w: &mut W) -> io::Result<()>
-    where
-        W: io::Write,
-    {
+    fn render(&self, vm: &ViewModel, w: &mut W) -> io::Result<()> {
         queue!(
             w,
             style::ResetColor,
@@ -167,5 +148,21 @@ impl View {
         w.flush()?;
 
         Ok(())
+    }
+}
+
+impl MainView {
+    pub fn new() -> Self {
+        let split_skin = SKIN.lines().skip(1).collect::<Vec<_>>().leak();
+
+        MainView {
+            skin: split_skin,
+            version_pos: Pos { r: 0, c: 56 },
+            sound_list_pos: Pos { r: 2, c: 3 },
+            sounds_list_height: 6,
+            track_list_pos: Pos { r: 14, c: 2 },
+            track_list_height: 5,
+            //track_spacing: 5,
+        }
     }
 }

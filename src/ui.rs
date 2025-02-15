@@ -1,3 +1,4 @@
+use crate::ui::view::MainView;
 use crate::ui::view::View;
 use crate::ui::view_model::ViewModel;
 use std::io;
@@ -21,13 +22,13 @@ pub struct Pos {
 
 pub struct UI {
     pub vm: ViewModel,
-    pub view: View,
+    pub view: MainView,
 }
 
 impl UI {
     pub fn new() -> Self {
         let vm = ViewModel::new();
-        let view = View::new();
+        let view = MainView::new();
         UI { vm, view }
     }
 
