@@ -17,18 +17,24 @@ mod app {
     use crate::pos::Pos;
     use crate::spinner;
     use crate::spinner::{spinner_rc, SpinnerRc, SpinnerView};
+    use crate::textbox;
+    use crate::textbox::{textbox_rc, TextBoxRc, TextBoxView};
     use crate::widget::{FocusChain, Focusable, FocusableRc, View, Widget};
     #[derive(Copy, Clone, Debug, PartialEq)]
     pub enum Message {
         Reset,
         NextFocus,
         Spinner(usize, spinner::Message),
+        Text(textbox::Message),
+        OnText,
     }
 
     pub struct App {
-        pub spin: Vec<SpinnerRc>,
+        spin: Vec<SpinnerRc>,
         focus_chain: FocusChain,
-        pub reset_btn: ButtonRc<Message>,
+        reset_btn: ButtonRc<Message>,
+        txt: TextBoxRc,
+        n_from_txt: Option<i64>,
     }
 
     impl App {
@@ -41,7 +47,11 @@ mod app {
                 .collect();
             let reset_btn = button_rc("RST", Message::Reset);
 
+            let n_from_txt = 123;
+            let txt = textbox_rc(&n_from_txt.to_string());
+
             let mut focus_chain = FocusChain::new();
+            focus_chain.push(txt.clone() as FocusableRc);
             for s in &spin {
                 focus_chain.push(s.clone() as FocusableRc);
             }
@@ -51,6 +61,8 @@ mod app {
                 focus_chain,
                 spin,
                 reset_btn,
+                txt,
+                n_from_txt: Some(n_from_txt),
             }
         }
 
@@ -78,13 +90,33 @@ mod app {
                         s.borrow_mut().update(spinner::Message::SetValue(0)); //self.spin.iter().for_each(|s| s.borrow_mut().value = 0),
                     }
                 }
+                Message::Text(m) => {
+                    self.txt.borrow_mut().update(m);
+
+                    self.n_from_txt = match self.txt.borrow().text().parse::<i64>() {
+                        Ok(n) if n >= 0 && n < 256 => Some(n),
+                        _ => None,
+                    }
+                }
+                Message::OnText => {
+                    // New text was commited
+                    self.n_from_txt = match self.txt.borrow().text().parse::<i64>() {
+                        Ok(val) => Some(val),
+                        _ => None,
+                    }
+                }
             };
         }
 
         fn view(&self, pos: Pos) -> AppView {
-            //let sum = &self.spin.iter().map(|s| s.borrow().value).sum::<i64>();
+            let hex_str = match self.n_from_txt {
+                Some(n) => format!("0x{:02x}", n),
+                _ => "----".to_string(),
+            };
 
             AppView {
+                txt: self.txt.borrow().view(pos + Pos { r: 10, c: 9 }),
+                hex_lbl: label(pos + Pos { r: 12, c: 10 }, &hex_str),
                 sum_lbl: label(pos + Pos { r: 7, c: 10 }, &format!("SUM: {}", self.sum())),
                 rst_btn: self.reset_btn.borrow().view(pos + Pos { r: 6, c: 9 }),
                 spinners: self
@@ -106,8 +138,10 @@ mod app {
     impl_focusable_with_focuschain!(App, focus_chain);
 
     pub struct AppView {
+        txt: TextBoxView,
         rst_btn: ButtonView<Message>,
         sum_lbl: Label,
+        hex_lbl: Label,
         spinners: Vec<SpinnerView>,
     }
     impl View<Message> for AppView {
@@ -117,11 +151,13 @@ mod app {
                 s.draw(renderer);
             }
 
+            self.txt.draw(renderer);
             self.rst_btn.draw(renderer);
             self.sum_lbl.draw(renderer);
+            self.hex_lbl.draw(renderer);
         }
         fn on_event(&self, e: Event) -> Vec<Message> {
-            if let Event::Next = e {
+            if let Event::NextFocus = e {
                 return vec![Message::NextFocus];
             }
 
@@ -129,15 +165,16 @@ mod app {
             // could have a ChildMessage routed by child ID or similar
             let mut msgs: Vec<Message> = vec![];
             for (i, s) in self.spinners.iter().enumerate() {
-                let new_msgs = s.on_event(e);
-                for m in new_msgs {
-                    msgs.push(Message::Spinner(i, m));
-                }
+                s.on_event(e)
+                    .iter()
+                    .for_each(|&m| msgs.push(Message::Spinner(i, m)));
             }
 
-            for &e in self.rst_btn.on_event(e).iter() {
-                msgs.push(e);
-            }
+            self.rst_btn.on_event(e).iter().for_each(|&m| msgs.push(m));
+            self.txt
+                .on_event(e)
+                .iter()
+                .for_each(|&m| msgs.push(Message::Text(m)));
 
             msgs
         }
@@ -235,7 +272,7 @@ mod spinner {
         }
         fn on_event(&self, e: Event) -> Vec<Message> {
             let focus_msg = match e {
-                Event::Next => vec![Message::NextFocus],
+                Event::NextFocus => vec![Message::NextFocus],
                 _ => vec![],
             };
 
@@ -354,6 +391,122 @@ mod label {
             pos,
             text: text.to_string(),
         }
+    }
+}
+
+mod textbox {
+    use crate::interaction::{Event, Renderer};
+    use crate::pos::Pos;
+    use crate::widget::{Focusable, View, Widget};
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    #[derive(Copy, Clone, Debug, PartialEq)]
+    pub enum Message {
+        EnterChar(char),
+        Del,
+        CursorLeft,
+        CursorRight,
+    }
+
+    pub struct TextBox {
+        text: String,
+        has_focus: bool,
+        //on_text: OnTextMessage,
+    }
+    impl TextBox {
+        pub fn text(&self) -> &str {
+            &self.text
+        }
+    }
+
+    impl Widget<Message, TextBoxView> for TextBox {
+        fn update(&mut self, msg: Message) {
+            match msg {
+                Message::EnterChar(c) => {
+                    self.text.push(c);
+                }
+                Message::Del => {
+                    self.text.pop();
+                }
+                Message::CursorRight => {}
+                Message::CursorLeft => {}
+                _ => {}
+            }
+        }
+        fn view(&self, pos: Pos) -> TextBoxView {
+            TextBoxView {
+                pos,
+                text: self.text.clone(),
+                has_focus: self.has_focus,
+                //    on_text: self.on_text,
+            }
+        }
+    }
+    impl Focusable for TextBox {
+        fn has_focus(&self) -> bool {
+            self.has_focus
+        }
+        fn next_focus(&mut self) {
+            self.has_focus = !self.has_focus;
+        }
+        fn focus(&mut self) {
+            self.has_focus = true
+        }
+        fn defocus(&mut self) {
+            self.has_focus = false
+        }
+    }
+
+    pub struct TextBoxView {
+        pos: Pos,
+        text: String,
+        has_focus: bool,
+        //on_text: Message,
+    }
+    impl View<Message> for TextBoxView {
+        fn on_event(&self, e: Event) -> Vec<Message> {
+            if !self.has_focus {
+                return vec![];
+            }
+
+            let text_update_msg = match e {
+                // Emit on text
+                Event::Activate | Event::NextFocus | Event::PrevFocus => vec![],
+                _ => vec![],
+            };
+
+            let msgs = match e {
+                Event::Activate => vec![],
+                Event::Char(c) => vec![Message::EnterChar(c)],
+                Event::Right => vec![],
+                Event::Left => vec![],
+                Event::Del => vec![Message::Del],
+                _ => vec![],
+            };
+
+            vec![text_update_msg, msgs].concat()
+        }
+        fn draw(&self, renderer: &mut dyn Renderer) {
+            if self.has_focus {
+                renderer.render_str(self.pos, format!("[{}]", &self.text).as_str());
+            } else {
+                renderer.render_str(self.pos, format!(" {} ", &self.text).as_str());
+            }
+        }
+    }
+
+    pub fn textbox(text: &str) -> TextBox {
+        TextBox {
+            text: text.to_string(),
+            //on_text,
+            has_focus: false,
+        }
+    }
+
+    pub type TextBoxRc = Rc<RefCell<TextBox>>;
+    pub fn textbox_rc(text: &str) -> TextBoxRc {
+        Rc::new(RefCell::new(textbox(text)))
     }
 }
 

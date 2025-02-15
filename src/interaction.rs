@@ -4,11 +4,14 @@ use crate::pos::Pos;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Event {
-    Next,
-    //Back, // TODO Add back support
+    NextFocus,
+    PrevFocus,
     Activate,
     Quit,
     Char(char),
+    Del,
+    Right,
+    Left,
 }
 
 pub trait Renderer {
