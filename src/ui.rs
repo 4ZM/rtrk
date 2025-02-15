@@ -1,56 +1,14 @@
 use std::io;
 
 pub use crossterm::{
-    cursor, execute, queue, style,
+    cursor,
+    event::{self, Event, KeyCode, KeyEvent},
+    execute, queue, style,
     terminal::{self, ClearType},
-    Command,
 };
 use itertools::Itertools;
 
-pub struct Pos {
-    pub r: u16,
-    pub c: u16,
-}
-
-pub struct UI {
-    pub vm: ViewModel,
-    pub view: View,
-}
-
-impl UI {
-    pub fn new() -> Self {
-        let vm = ViewModel::new();
-        let view = View::new();
-        UI { vm, view }
-    }
-}
-
-pub struct ViewModel {
-    version: String,
-}
-
-impl ViewModel {
-    pub fn new() -> Self {
-        ViewModel {
-            version: Self::version(),
-        }
-    }
-
-    pub fn version() -> String {
-        env!("CARGO_PKG_VERSION")
-            .split('.')
-            .take(2)
-            .join(".")
-            .to_string()
-    }
-}
-
-pub struct View {
-    pub skin: &'static [&'static str],
-    pub version_pos: Pos,
-    pub sound_list: Pos,
-    pub sound_code: Pos,
-}
+use crossterm::event::KeyEventKind;
 
 const SKIN: &str = r#"
 ┏━━━━━━━━━[ rtrk ]━━━━━━━━━━━━━━━━━━━━━━━━━━ , ━━━━━━ [v . ] ━━━ =^..^= ━━━━━━━┓
@@ -74,6 +32,96 @@ const SKIN: &str = r#"
 ┃ 00 ' --- - -- ---  '  --- - -- ---  '  --- - -- ---  '  --- - -- ---  '  --- ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 "#;
+
+pub struct Pos {
+    pub r: u16,
+    pub c: u16,
+}
+
+pub struct UI {
+    pub vm: ViewModel,
+    pub view: View,
+}
+
+impl UI {
+    pub fn new() -> Self {
+        let vm = ViewModel::new();
+        let view = View::new();
+        UI { vm, view }
+    }
+
+    pub fn read_char() -> std::io::Result<char> {
+        loop {
+            if let Ok(Event::Key(KeyEvent {
+                code: KeyCode::Char(c),
+                kind: KeyEventKind::Press,
+                modifiers: _,
+                state: _,
+            })) = event::read()
+            {
+                return Ok(c);
+            }
+        }
+    }
+
+    pub fn start(&self) -> io::Result<()> {
+        let mut stdout = io::stdout();
+
+        execute!(&mut stdout, terminal::EnterAlternateScreen)?;
+
+        terminal::enable_raw_mode()?;
+
+        loop {
+            self.view.render(&self.vm, &mut stdout)?;
+
+            match Self::read_char()? {
+                'q' => {
+                    execute!(&mut stdout, cursor::SetCursorStyle::DefaultUserShape).unwrap();
+                    break;
+                }
+                _ => {}
+            };
+        }
+
+        execute!(
+            stdout,
+            style::ResetColor,
+            cursor::Show,
+            terminal::LeaveAlternateScreen
+        )?;
+
+        terminal::disable_raw_mode()?;
+
+        Ok(())
+    }
+}
+
+pub struct ViewModel {
+    version: String,
+}
+
+impl ViewModel {
+    pub fn new() -> Self {
+        ViewModel {
+            version: Self::version(),
+        }
+    }
+
+    fn version() -> String {
+        env!("CARGO_PKG_VERSION")
+            .split('.')
+            .take(2)
+            .join(".")
+            .to_string()
+    }
+}
+
+pub struct View {
+    pub skin: &'static [&'static str],
+    pub version_pos: Pos,
+    pub sound_list: Pos,
+    pub sound_code: Pos,
+}
 
 impl View {
     pub fn new() -> Self {
@@ -106,7 +154,7 @@ impl View {
         queue!(
             w,
             cursor::MoveTo(self.version_pos.c, self.version_pos.r),
-            style::Print(ViewModel::version())
+            style::Print(&vm.version)
         )?;
 
         queue!(
