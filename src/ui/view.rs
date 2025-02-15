@@ -1,5 +1,6 @@
+use crate::ui::view_model;
+use crate::ui::view_model::Pos;
 use crate::ui::view_model::ViewModel;
-use crate::ui::Pos;
 use std::io;
 
 pub use crossterm::{
@@ -9,9 +10,6 @@ pub use crossterm::{
 
 pub trait View<W: io::Write> {
     fn render(&self, vm: &ViewModel, w: &mut W) -> io::Result<()>;
-    fn render_sound_list(&self, vm: &ViewModel, w: &mut W) -> io::Result<()>;
-    fn render_tracks(&self, vm: &ViewModel, w: &mut W) -> io::Result<()>;
-    fn render_sound(&self, snd_idx: u8, vm: &ViewModel, w: &mut W) -> io::Result<()>;
 }
 
 const SKIN: &str = r#"
@@ -50,21 +48,23 @@ fn fmt_2(val: Option<u8>) -> String {
         None => "--".to_string(),
     }
 }
-pub struct MainView {
-    pub skin: &'static [&'static str],
 
-    pub version_pos: Pos,
-
-    pub sound_list_pos: Pos,
-    pub sounds_list_height: u8,
-
+pub struct Tracks {
     pub track_list_pos: Pos,
     pub track_list_height: u8,
-    //pub track_spacing: u8,
 }
 
-impl<W: io::Write> View<W> for MainView {
-    fn render_tracks(&self, vm: &ViewModel, w: &mut W) -> io::Result<()> {
+impl Tracks {
+    pub fn new() -> Self {
+        Tracks {
+            track_list_pos: Pos { r: 14, c: 2 },
+            track_list_height: 5,
+        }
+    }
+}
+
+impl<W: io::Write> View<W> for Tracks {
+    fn render(&self, vm: &ViewModel, w: &mut W) -> io::Result<()> {
         let pos = &self.track_list_pos;
         queue!(w, cursor::MoveTo(pos.c, pos.r))?;
 
@@ -74,34 +74,24 @@ impl<W: io::Write> View<W> for MainView {
         let tl_start = tl_active - tl_height / 2;
         let tl_end = tl_start + tl_height;
 
-        for i in tl_start..tl_end {
-            self.render_sound(i, vm, w)?;
-            queue!(w, cursor::MoveToColumn(pos.c), cursor::MoveDown(1))?;
-        }
+        // for i in tl_start..tl_end {
+        //     self.render_sound(i, vm, w)?;
+        //     queue!(w, cursor::MoveToColumn(pos.c), cursor::MoveDown(1))?;
+        // }
 
         Ok(())
     }
+}
 
-    fn render_sound_list(&self, vm: &ViewModel, w: &mut W) -> io::Result<()> {
-        let pos = &self.sound_list_pos;
+pub struct Sound {
+    pub sound_idx: u8,
+}
 
-        let sl_start = vm.sounds_list_active;
-        let sl_height = self.sounds_list_height;
+impl<W: io::Write> View<W> for Sound {
+    fn render(&self, vm: &ViewModel, w: &mut W) -> io::Result<()> {
+        let snd = &vm.sounds[self.sound_idx as usize];
 
-        queue!(w, cursor::MoveTo(pos.c, pos.r))?;
-
-        for i in sl_start..sl_start + sl_height {
-            self.render_sound(i, vm, w)?;
-            queue!(w, cursor::MoveToColumn(pos.c), cursor::MoveDown(1))?;
-        }
-
-        Ok(())
-    }
-
-    fn render_sound(&self, snd_idx: u8, vm: &ViewModel, w: &mut W) -> io::Result<()> {
-        let snd = &vm.sounds[snd_idx as usize];
-
-        // 00 . - -------- ------
+        // - -------- ------
         let wave_id = fmt_1(snd.wave_id);
         let attack = fmt_2(snd.attack);
         let decay = fmt_2(snd.decay);
@@ -110,8 +100,6 @@ impl<W: io::Write> View<W> for MainView {
 
         queue!(
             w,
-            style::Print(format!("{:02X}", snd_idx)),
-            cursor::MoveRight(3),
             style::Print(&wave_id),
             cursor::MoveRight(1),
             style::Print(&attack),
@@ -122,7 +110,46 @@ impl<W: io::Write> View<W> for MainView {
 
         Ok(())
     }
+}
 
+pub struct SoundList {}
+
+impl SoundList {
+    const SOUNDS_LIST_HEIGHT: u8 = 6;
+    const SOUNDS_LIST_POS: Pos = Pos { r: 2, c: 3 };
+}
+
+impl<W: io::Write> View<W> for SoundList {
+    fn render(&self, vm: &ViewModel, w: &mut W) -> io::Result<()> {
+        let pos = Self::SOUNDS_LIST_POS;
+
+        let sl_start = vm.sounds_list_active;
+        let sl_height = Self::SOUNDS_LIST_HEIGHT;
+
+        queue!(w, cursor::MoveTo(pos.c, pos.r))?;
+
+        for i in sl_start..sl_start + sl_height {
+            queue!(w, style::Print(format!("{:02X}", i)), cursor::MoveRight(3))?;
+
+            Sound { sound_idx: i }.render(vm, w)?;
+
+            queue!(w, cursor::MoveToColumn(pos.c), cursor::MoveDown(1))?;
+        }
+
+        Ok(())
+    }
+}
+
+pub struct Main {
+    pub skin: &'static [&'static str],
+
+    pub sound_list: SoundList,
+    pub tracks: Tracks,
+    pub version_pos: Pos,
+    //pub track_spacing: u8,
+}
+
+impl<W: io::Write> View<W> for Main {
     fn render(&self, vm: &ViewModel, w: &mut W) -> io::Result<()> {
         queue!(
             w,
@@ -142,8 +169,8 @@ impl<W: io::Write> View<W> for MainView {
             style::Print(&vm.version)
         )?;
 
-        self.render_sound_list(vm, w)?;
-        self.render_tracks(vm, w)?;
+        self.sound_list.render(vm, w)?;
+        self.tracks.render(vm, w)?;
 
         w.flush()?;
 
@@ -151,17 +178,15 @@ impl<W: io::Write> View<W> for MainView {
     }
 }
 
-impl MainView {
+impl Main {
     pub fn new() -> Self {
         let split_skin = SKIN.lines().skip(1).collect::<Vec<_>>().leak();
 
-        MainView {
+        Main {
             skin: split_skin,
             version_pos: Pos { r: 0, c: 56 },
-            sound_list_pos: Pos { r: 2, c: 3 },
-            sounds_list_height: 6,
-            track_list_pos: Pos { r: 14, c: 2 },
-            track_list_height: 5,
+            sound_list: SoundList {},
+            tracks: Tracks::new(),
             //track_spacing: 5,
         }
     }

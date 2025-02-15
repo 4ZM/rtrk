@@ -1,4 +1,3 @@
-use crate::ui::view::MainView;
 use crate::ui::view::View;
 use crate::ui::view_model::ViewModel;
 use std::io;
@@ -15,20 +14,15 @@ use crossterm::event::KeyEventKind;
 mod view;
 mod view_model;
 
-pub struct Pos {
-    pub r: u16,
-    pub c: u16,
-}
-
 pub struct UI {
     pub vm: ViewModel,
-    pub view: MainView,
+    pub view: view::Main,
 }
 
 impl UI {
     pub fn new() -> Self {
         let vm = ViewModel::new();
-        let view = MainView::new();
+        let view = view::Main::new();
         UI { vm, view }
     }
 

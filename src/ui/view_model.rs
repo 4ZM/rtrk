@@ -1,6 +1,11 @@
 use itertools::Itertools;
 
-#[derive(Copy, Clone, Default)]
+pub struct Pos {
+    pub r: u16,
+    pub c: u16,
+}
+
+#[derive(Copy, Clone)]
 pub struct Sound {
     pub wave_id: Option<u8>,
     pub attack: Option<u8>,
@@ -56,8 +61,8 @@ impl ViewModel {
         ViewModel {
             version: Self::version(),
             sounds,
-            sounds_list_active: 1, // TBD Demo value, should start at 0
-            track_list_active: 5,  // TBD Demo value, should start at 0
+            sounds_list_active: 23, // TBD Demo value, should start at 0
+            track_list_active: 42,  // TBD Demo value, should start at 0
         }
     }
 
