@@ -1,3 +1,4 @@
+mod cycle;
 mod interaction;
 mod pos;
 mod runtime;
@@ -250,8 +251,7 @@ mod voice_list {
     use std::cell::RefCell;
     use std::rc::Rc;
 
-    use itertools::Itertools;
-
+    use crate::cycle::Cycle;
     use crate::interaction::Event;
     use crate::pos::Pos;
     use crate::voice::voice_rc;
@@ -272,24 +272,24 @@ mod voice_list {
     pub struct VoiceList {
         focus_chain: FocusChain,
         voices: Vec<VoiceRc>,
-        first_voice_idx: usize,
-        selected_voice_idx: usize,
+        first_voice_idx: Cycle,
+        selected_voice_idx: Cycle,
         list_window_len: usize,
     }
 
     impl VoiceList {
         pub fn new() -> Self {
             let list_window_len = 6;
-            let voices: Vec<_> = (0..255).map(|_| voice_rc()).collect();
+            let voices: Vec<_> = (0..0x100).map(|_| voice_rc()).collect();
 
             let mut focus_chain = FocusChain::new();
-            focus_chain.push(voices[0x20].clone() as FocusableRc);
+            focus_chain.push(voices[0].clone() as FocusableRc);
 
             Self {
                 focus_chain,
                 voices,
-                first_voice_idx: 0x1F, // TODO Set some random number here - should be 0
-                selected_voice_idx: 0x20, // TODO Set some random number here - should be 0
+                first_voice_idx: Cycle::new(0, 0x100),
+                selected_voice_idx: Cycle::new(0, 0x100),
                 list_window_len,
             }
         }
@@ -300,21 +300,27 @@ mod voice_list {
             match msg {
                 Message::NextFocus => self.next_focus(),
                 Message::Up => {
-                    if self.selected_voice_idx > 0 {
-                        self.selected_voice_idx -= 1;
-                    } else {
-                        self.selected_voice_idx = self.voices.len();
+                    if *self.selected_voice_idx == *self.first_voice_idx {
+                        self.first_voice_idx -= 1;
                     }
+                    self.selected_voice_idx -= 1;
+
                     self.focus_chain.clear();
                     self.focus_chain
-                        .push(self.voices[self.selected_voice_idx].clone() as FocusableRc);
+                        .push(self.voices[*self.selected_voice_idx].clone() as FocusableRc);
                     self.focus_chain.next_focus();
                 }
                 Message::Down => {
-                    self.selected_voice_idx = (self.selected_voice_idx + 1) % self.voices.len();
+                    if *self.selected_voice_idx
+                        == *(self.first_voice_idx + self.list_window_len - 1)
+                    {
+                        self.first_voice_idx += 1;
+                    }
+
+                    self.selected_voice_idx += 1;
                     self.focus_chain.clear();
                     self.focus_chain
-                        .push(self.voices[self.selected_voice_idx].clone() as FocusableRc);
+                        .push(self.voices[*self.selected_voice_idx].clone() as FocusableRc);
                     self.focus_chain.next_focus();
                 }
                 Message::Voice(idx, vm) => self.voices[idx].borrow_mut().update(vm),
@@ -327,6 +333,7 @@ mod voice_list {
                 &self.voices,
                 self.first_voice_idx,
                 self.list_window_len,
+                self.focus_chain.has_focus(),
             )
         }
     }
@@ -334,18 +341,25 @@ mod voice_list {
 
     pub struct VoiceListView {
         voices: Vec<VoiceView>,
-        idx_offset: usize,
+        idx_offset: Cycle,
         idx_labels: Vec<Label>,
+        has_focus: bool,
     }
 
     impl VoiceListView {
         pub fn new(
             pos: Pos,
             voices: &Vec<VoiceRc>,
-            first_voice_idx: usize,
+            first_voice_idx: Cycle,
             list_len: usize,
+            has_focus: bool,
         ) -> Self {
-            let voices = &voices[first_voice_idx..first_voice_idx + list_len];
+            let voices: Vec<_> = voices
+                .iter()
+                .cycle()
+                .skip(*first_voice_idx)
+                .take(list_len)
+                .collect();
             Self {
                 voices: voices
                     .iter()
@@ -353,16 +367,15 @@ mod voice_list {
                     .map(|(i, v)| v.borrow().view(pos + Pos { r: i as u16, c: 5 }))
                     .collect(),
                 idx_offset: first_voice_idx,
-                idx_labels: voices
-                    .iter()
-                    .enumerate()
-                    .map(|(i, _)| {
+                idx_labels: (0..list_len)
+                    .map(|i| {
                         label(
                             pos + Pos { r: i as u16, c: 0 },
-                            &format!("{:02X}", i + first_voice_idx),
+                            &format!("{:02X}", *(first_voice_idx + i)),
                         )
                     })
                     .collect(),
+                has_focus,
             }
         }
     }
@@ -376,6 +389,9 @@ mod voice_list {
                 return vec![Message::NextFocus];
             }
 
+            if !self.has_focus {
+                return vec![];
+            }
             match e {
                 Event::Up => return vec![Message::Up],
                 Event::Down => return vec![Message::Down],
@@ -386,7 +402,7 @@ mod voice_list {
             for (i, v) in self.voices.iter().enumerate() {
                 v.on_event(e)
                     .iter()
-                    .for_each(|&m| msgs.push(Message::Voice(i + self.idx_offset, m)));
+                    .for_each(|&m| msgs.push(Message::Voice(*(self.idx_offset + i), m)));
             }
 
             msgs

@@ -28,7 +28,7 @@ impl TextBox {
             has_focus: false,
         }
     }
-    pub fn text(&self) -> &str {
+    pub fn _text(&self) -> &str {
         &self.text
     }
 }
