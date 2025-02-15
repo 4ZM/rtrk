@@ -55,8 +55,11 @@ impl<W: io::Write> Renderer for CrosstermRenderer<W> {
             cursor::Hide,
             cursor::MoveTo(c, r),
             SetForegroundColor(Color::Rgb { r: 0, g: 255, b: 0 }),
-            style::Print(format!("{}", text)),
         );
+
+        for l in text.lines() {
+            let _ = queue!(self.w, style::Print(l), cursor::MoveToNextLine(1));
+        }
     }
 
     fn render_fmt_str(&mut self, Pos { r, c }: Pos, text: &str, fmt: Style) {
@@ -78,7 +81,9 @@ impl<W: io::Write> Renderer for CrosstermRenderer<W> {
             );
         }
 
-        let _ = queue!(self.w, style::Print(format!("{}", text)),);
+        for l in text.lines() {
+            let _ = queue!(self.w, style::Print(l), cursor::MoveToNextLine(1));
+        }
 
         if fmt != Style::Default {
             let _ = queue!(self.w, SetAttribute(Attribute::Reset), ResetColor,);
