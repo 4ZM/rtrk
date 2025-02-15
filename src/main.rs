@@ -27,7 +27,7 @@ pub fn read_char() -> std::io::Result<char> {
 }
 
 fn main() -> io::Result<()> {
-    let ui_layout = ui::Layout::new();
+    let ui = ui::UI::new();
 
     let mut stdout = io::stdout();
 
@@ -36,37 +36,7 @@ fn main() -> io::Result<()> {
     terminal::enable_raw_mode()?;
 
     loop {
-        queue!(
-            stdout,
-            style::ResetColor,
-            terminal::Clear(ClearType::All),
-            cursor::Hide,
-            cursor::MoveTo(0, 0)
-        )?;
-
-        for line in ui_layout.skin.iter() {
-            queue!(stdout, style::Print(line), cursor::MoveToNextLine(1))?;
-        }
-
-        queue!(
-            stdout,
-            cursor::MoveTo(ui_layout.version_pos.c, ui_layout.version_pos.r),
-            style::Print("5.1")
-        )?;
-
-        queue!(
-            stdout,
-            cursor::MoveTo(ui_layout.sound_code.c, ui_layout.sound_code.r),
-            style::Print(format!("{:X}", 0x3)),
-        )?;
-
-        queue!(
-            stdout,
-            cursor::MoveTo(ui_layout.sound_list.c, ui_layout.sound_list.r),
-            style::Print(format!("{:02X}", 0xF))
-        )?;
-
-        stdout.flush()?;
+        ui.view.render(&ui.vm, &mut stdout)?;
 
         match read_char()? {
             'q' => {
