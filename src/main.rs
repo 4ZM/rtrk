@@ -1,24 +1,3 @@
-use std::time::Duration;
-
-use std::io;
-
-pub use crossterm::{
-    cursor,
-    event::{self, Event, KeyCode, KeyEvent},
-    execute, queue, style,
-    terminal::{self, ClearType},
-};
-
-use crossterm::event::KeyEventKind;
-
-// The state
-
-#[derive(Default)]
-struct Counter {
-    focus_idx: Option<i64>,
-    value: i64,
-}
-
 // Messages
 enum Message {
     NextFocus,
@@ -28,56 +7,121 @@ enum Message {
     Quit,
 }
 
+// The state
+#[derive(Default)]
+struct Counter {
+    value: i64,
+}
+
 impl Counter {
     // Update state (self)
     fn update(&mut self, msg: Message) {
         match msg {
             Message::Increment => self.value += 1,
             Message::Decrement => self.value -= 1,
-            Message::NextFocus => {
-                self.focus_idx = match self.focus_idx {
-                    Some(0) => Some(2),
-                    Some(2) => None,
-                    None => Some(0),
-                    _ => panic!("Implossible"),
-                }
-            }
-            Message::SelectFocused => match self.focus_idx {
-                Some(0) => self.value -= 1, // Send Message::Decrement,
-                Some(2) => self.value += 1, // Send Message::Increment,
-                Some(_) => panic!("Bad focus index"),
-                None => (),
-            },
             _ => (),
         }
     }
 
     // Build widget tree given state (self)
-    fn view(&self) -> Ui {
-        let decrement = Button {
-            focus: self.focus_idx == Some(0),
-            text: "-".to_string(),
-            on_press: Message::Decrement,
-        };
-        let counter = Label {
-            focus: self.focus_idx == Some(1),
-            text: self.value.to_string(),
-        };
-        let increment = Button {
-            focus: self.focus_idx == Some(2),
-            text: "+".to_string(),
-            on_press: Message::Increment,
-        };
+    fn view(&self) -> Layout {
+        let decrement = button("-", Message::Decrement);
+        let counter = label(&self.value.to_string());
+        let increment = button("+", Message::Increment);
 
-        Ui {
-            widgets: vec![Box::new(decrement), Box::new(counter), Box::new(increment)],
+        Layout {
+            id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
+            widgets: vec![decrement, counter, increment],
         }
     }
 }
 
+trait Renderable {
+    // Doesn't feel right to keep this here - but without it the polymorphism doesn't work
+    // since we hold Widgets to draw.
+    // Implement it in the UI framework part.
+    // Extracting it into it's own trait - does it make it possible to implement in another crate?
+    //   yes but there is a dependency on this one to the other crate (not extensible)
+    fn render(&self) {}
+}
+
+use std::sync::atomic::{AtomicUsize, Ordering};
+static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
+
+trait Widget: Renderable {
+    fn id(&self) -> usize;
+    fn children(&self) -> Vec<usize> {
+        vec![self.id()]
+    }
+}
+
+struct Layout {
+    id: usize,
+    widgets: Vec<Box<dyn Widget>>,
+}
+impl Widget for Layout {
+    fn id(&self) -> usize {
+        self.id
+    }
+    fn children(&self) -> Vec<usize> {
+        let mut children: Vec<usize> = vec![self.id()];
+        for w in self.widgets.iter() {
+            children.append(&mut w.children());
+        }
+        children
+    }
+} // To put layouts inside layouts
+
+struct Button {
+    id: usize,
+    text: String,
+    on_press: Message,
+}
+impl Widget for Button {
+    fn id(&self) -> usize {
+        self.id
+    }
+}
+fn button(text: &str, on_press: Message) -> Box<Button> {
+    Box::new(Button {
+        id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
+        text: text.to_string(),
+        on_press,
+    })
+}
+
+struct Label {
+    id: usize,
+    text: String,
+}
+impl Widget for Label {
+    fn id(&self) -> usize {
+        self.id
+    }
+}
+fn label(text: &str) -> Box<Label> {
+    Box::new(Label {
+        id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
+        text: text.to_string(),
+    })
+}
+
+// UI FRAMEWORK STUFF
+
+use crossterm::event::KeyEventKind;
+use std::io;
+use std::time::Duration;
+
+pub use crossterm::{
+    cursor,
+    event::{self, Event, KeyCode, KeyEvent},
+    execute, queue, style,
+    terminal::{self, ClearType},
+};
+
 // UI Library Interface render and input
 
-fn display(ui: &Ui) {
+fn display(ui: &Layout) {
     let _ = execute!(
         std::io::stdout(),
         terminal::Clear(ClearType::All),
@@ -90,7 +134,7 @@ fn display(ui: &Ui) {
     }
 }
 
-fn interact(_w: &Ui) -> Vec<Message> {
+fn interact(_w: &Layout) -> Vec<Message> {
     if !event::poll(Duration::from_secs(0)).unwrap() {
         return vec![];
     }
@@ -131,48 +175,30 @@ fn interact(_w: &Ui) -> Vec<Message> {
 }
 
 // Widgets
-
-trait Widget {
-    fn render(&self);
-}
-
-struct Ui {
-    widgets: Vec<Box<dyn Widget>>,
-}
-impl Widget for Ui {
+impl Renderable for Layout {
     fn render(&self) {
-        for widget in self.widgets.iter() {
-            widget.render();
+        for w in self.widgets.iter() {
+            w.render();
         }
     }
 }
-
-struct Button {
-    focus: bool,
-    text: String,
-    on_press: Message,
-}
-impl Widget for Button {
+impl Renderable for Button {
     fn render(&self) {
-        if self.focus {
-            execute!(io::stdout(), style::Print(format!("<[{}]>", self.text))).unwrap();
-        } else {
-            execute!(io::stdout(), style::Print(format!(" [{}] ", self.text))).unwrap();
-        }
+        // if self.focus {
+        //     execute!(io::stdout(), style::Print(format!("<[{}]>", self.text))).unwrap();
+        // } else {
+        execute!(io::stdout(), style::Print(format!(" [{}] ", self.text))).unwrap();
+        //        }
     }
 }
 
-struct Label {
-    focus: bool,
-    text: String,
-}
-impl Widget for Label {
+impl Renderable for Label {
     fn render(&self) {
-        if self.focus {
-            execute!(io::stdout(), style::Print(format!("<({})>", self.text))).unwrap();
-        } else {
-            execute!(io::stdout(), style::Print(format!(" ({}) ", self.text))).unwrap();
-        }
+        // if self.focus {
+        //     execute!(io::stdout(), style::Print(format!("<({})>", self.text))).unwrap();
+        // } else {
+        execute!(io::stdout(), style::Print(format!(" ({}) ", self.text))).unwrap();
+        //        }
     }
 }
 
