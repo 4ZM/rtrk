@@ -14,10 +14,9 @@ mod app {
 
     pub struct App {
         pos: Pos,
-        pub value: i64, // TODO pub for test - ok?
-        pub inc_btn: Button<Message>,
+        pub value: i64,               // TODO pub for test - ok?
+        pub inc_btn: Button<Message>, // they have the focus state, so can't be just view
         pub dec_btn: Button<Message>,
-        //        pub lbl: Label,
     }
     impl App {
         pub fn new() -> Self {
@@ -27,11 +26,10 @@ mod app {
                 value: 0,
                 inc_btn: button(pos + Pos { r: 0, c: 0 }, "+", Message::Increment),
                 dec_btn: button(pos + Pos { r: 2, c: 0 }, "-", Message::Decrement),
-                //              lbl: label(pos + Pos { r: 0, c: 3 }, ""),
             }
         }
     }
-    impl<'a> Widget<'a, Message, AppView<'a>> for App {
+    impl Widget<Message, AppView> for App {
         fn pos(&self) -> Pos {
             self.pos
         }
@@ -44,22 +42,12 @@ mod app {
             vec![]
         }
 
-        fn view(&'a self) -> AppView {
+        fn view(&self) -> AppView {
             AppView {
-                widget: &self,
                 lbl: label(self.pos + Pos { r: 1, c: 1 }, &self.value.to_string()),
+                inc_btn: self.inc_btn.view(),
+                dec_btn: self.dec_btn.view(),
             }
-            // Layout {
-            //     views: vec![
-            //         Box::new(ButtonView::<'a, Message> {
-            //             button: &self.inc_btn,
-            //         }),
-            //         Box::new(ButtonView::<'a, Message> {
-            //             button: &self.dec_btn,
-            //         }),
-            //     ],
-            //     //                views: vec![],
-            // }
         }
     }
     impl Focusable for App {}
@@ -67,49 +55,23 @@ mod app {
         fn draw(&self, _renderer: &mut dyn crate::interaction::Renderer) {}
     }
 
-    pub struct AppView<'a> {
-        widget: &'a App,
+    pub struct AppView {
+        inc_btn: ButtonView<Message>,
+        dec_btn: ButtonView<Message>,
         lbl: Label,
     }
-    impl<'a> View<Message> for AppView<'a> {
+    impl View<Message> for AppView {
         fn draw(&self, renderer: &mut dyn crate::interaction::Renderer) {
-            self.widget.inc_btn.view().draw(renderer);
+            self.inc_btn.draw(renderer);
             self.lbl.draw(renderer);
-            self.widget.dec_btn.view().draw(renderer);
+            self.dec_btn.draw(renderer);
         }
         fn on_event(&self, e: crate::interaction::Event) -> Vec<Message> {
-            vec![
-                self.widget.inc_btn.view().on_event(e),
-                self.widget.dec_btn.view().on_event(e),
-            ]
-            .concat()
+            vec![self.inc_btn.on_event(e), self.dec_btn.on_event(e)].concat()
         }
     }
 }
-mod layout {
-    // use crate::interaction::Renderer;
-    // use crate::widget::View;
 
-    // pub struct Layout<Message> {
-    //     pub views: Vec<Box<dyn View<Message>>>,
-    // }
-    // impl<Message> View<Message> for Layout<Message> {
-    //     fn on_event(&self, e: crate::interaction::Event) -> Vec<Message> {
-    //         let mut messages: Vec<Message> = vec![];
-    //         for v in self.views.iter() {
-    //             let mut new_messages = v.as_ref().on_event(e);
-    //             messages.append(&mut new_messages);
-    //         }
-    //         messages
-    //     }
-
-    //     fn draw(&self, renderer: &mut dyn Renderer) {
-    //         for v in self.views.iter() {
-    //             v.as_ref().draw(renderer);
-    //         }
-    //     }
-    // }
-}
 mod button {
     use crate::interaction::Event;
     use crate::interaction::Renderer;
@@ -122,36 +84,44 @@ mod button {
         pos: Pos,
         has_focus: bool,
     }
-    impl<'a, Message: Copy> Widget<'a, Message, ButtonView<'a, Message>> for Button<Message> {
+    impl<Message: Copy> Widget<Message, ButtonView<Message>> for Button<Message> {
         fn pos(&self) -> Pos {
             self.pos
         }
         fn update(&mut self, _msg: Message) -> Vec<Message> {
             vec![]
         }
-        fn view(&'a self) -> ButtonView<'a, Message> {
-            ButtonView::<Message> { button: &self }
+        fn view(&self) -> ButtonView<Message> {
+            ButtonView::<Message> {
+                text: self.text.clone(),
+                on_press: self.on_press,
+                pos: self.pos,
+                has_focus: self.has_focus,
+            }
         }
     }
 
-    pub struct ButtonView<'a, Message: Copy> {
-        pub button: &'a Button<Message>, // TODO shouldn't be pub, create a ctor
+    pub struct ButtonView<Message: Copy> {
+        text: String,
+        on_press: Message,
+        pos: Pos,
+        has_focus: bool,
     }
 
-    impl<'a, Message: Copy> View<Message> for ButtonView<'a, Message> {
+    impl<Message: Copy> View<Message> for ButtonView<Message> {
         fn on_event(&self, e: Event) -> Vec<Message> {
-            match (e, self.button.has_focus) {
+            match (e, self.has_focus) {
                 (Event::Activate, true) => {
-                    vec![self.button.on_press]
+                    vec![self.on_press]
                 }
                 _ => vec![],
             }
         }
         fn draw(&self, renderer: &mut dyn Renderer) {
-            if self.button.has_focus {
-                renderer.render_str(self.button.pos, &format!("[{}]", &self.button.text));
+            if self.has_focus {
+                renderer.render_str(self.pos, &format!("[{}]", &self.text));
             } else {
-                renderer.render_str(self.button.pos, &format!(" {} ", &self.button.text));
+                renderer.render_str(self.pos, &format!(" {} ", &self.text));
             }
         }
     }
@@ -170,7 +140,7 @@ mod button {
     // TODO Reduce verbosity of Message: Copy constraint?
 
     pub fn button<Message: Copy>(pos: Pos, text: &str, on_press: Message) -> Button<Message> {
-        Button::<Message> {
+        Button {
             pos,
             text: text.to_string(),
             on_press,
@@ -189,28 +159,11 @@ mod label {
         text: String,
     }
 
-    // impl<'a> Widget<'a, (), LabelView<'a>> for Label {
-    //     fn pos(&self) -> Pos {
-    //         self.pos
-    //     }
-    //     fn update(&mut self, _msg: ()) -> Vec<()> {
-    //         vec![]
-    //     }
-    //     fn view(&'a self) -> LabelView<'a> {
-    //         LabelView { label: &self }
-    //     }
-    // }
-
-    // pub struct LabelView<'a> {
-    //     pub label: &'a Label,
-    // }
-
     impl View<()> for Label {
         fn draw(&self, renderer: &mut dyn crate::interaction::Renderer) {
             renderer.render_str(self.pos, &format!("{}", &self.text));
         }
     }
-    //impl Focusable for Label {}
     pub fn label(pos: Pos, text: &str) -> Label {
         Label {
             pos,
@@ -218,37 +171,6 @@ mod label {
         }
     }
 }
-
-// mod label {
-//     use crate::interaction::Renderer;
-//     use crate::pos::Pos;
-//     use crate::widget::{Focusable, View, Widget};
-
-//     impl<Message, V: View> Widget<Message, V> for Label {
-//         fn pos(&self) -> Pos {
-//             self.pos
-//         }
-//         fn update(&mut self, msg: Message) -> Vec<Message> {
-//             vec![]
-//         }
-//         fn view(&self) -> V {
-//             self
-//         }
-//     }
-
-//     impl View for Label {
-//         fn draw(&self, renderer: &mut dyn Renderer) {
-//             renderer.render_str(self.pos, &self.text);
-//         }
-//     }
-//     impl Focusable for Label {}
-//     pub fn label(pos: Pos, text: &str) -> Box<Label> {
-//         Box::new(Label {
-//             pos,
-//             text: text.to_string(),
-//         })
-//     }
-// }
 
 mod widget {
     use crate::interaction::{Event, Renderer};
@@ -262,14 +184,20 @@ mod widget {
         fn defocus(&mut self) {}
     }
 
-    pub trait Widget<'a, Message: Copy, V: View<Message>>: Focusable {
+    /// A Widget is statefull and has the update() mechanism to mutate it's state.
+    /// It create views that are entirely disconnected from itself (no back ref with a lifetime).
+    pub trait Widget<Message: Copy, V: View<Message>>: Focusable {
         fn pos(&self) -> Pos;
 
         fn update(&mut self, msg: Message) -> Vec<Message>; // TODO return message should be different type
 
-        fn view(&'a self) -> V;
+        fn view(&self) -> V;
     }
 
+    /// A View can have data, but is stateless and immutable.  It's purpose is to interact with the
+    /// UI framework wrappers to draw and translate events to application messages.  Some things are
+    /// "just views" like labels (no state), some things like buttons are almost no state but are
+    /// focusable (i.e. have state)
     pub trait View<Message> {
         fn on_event(&self, e: Event) -> Vec<Message> {
             vec![]
@@ -425,7 +353,7 @@ mod runtime {
             view.draw(&mut renderer);
             renderer.flush();
 
-            std::thread::sleep(Duration::from_millis(200));
+            std::thread::sleep(Duration::from_millis(20));
 
             // Get UI event interactions
             let mut unprocessed_messages: Vec<app::Message> = vec![];
