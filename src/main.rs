@@ -15,11 +15,14 @@ use crossterm::event::KeyEventKind;
 
 #[derive(Default)]
 struct Counter {
+    focus_idx: Option<i64>,
     value: i64,
 }
 
 // Messages
 enum Message {
+    NextFocus,
+    SelectFocused,
     Increment,
     Decrement,
     Quit,
@@ -31,6 +34,20 @@ impl Counter {
         match msg {
             Message::Increment => self.value += 1,
             Message::Decrement => self.value -= 1,
+            Message::NextFocus => {
+                self.focus_idx = match self.focus_idx {
+                    Some(0) => Some(2),
+                    Some(2) => None,
+                    None => Some(0),
+                    _ => panic!("Implossible"),
+                }
+            }
+            Message::SelectFocused => match self.focus_idx {
+                Some(0) => self.value -= 1, // Send Message::Decrement,
+                Some(2) => self.value += 1, // Send Message::Increment,
+                Some(_) => panic!("Bad focus index"),
+                None => (),
+            },
             _ => (),
         }
     }
@@ -38,13 +55,16 @@ impl Counter {
     // Build widget tree given state (self)
     fn view(&self) -> Ui {
         let decrement = Button {
+            focus: self.focus_idx == Some(0),
             text: "-".to_string(),
             on_press: Message::Decrement,
         };
         let counter = Label {
+            focus: self.focus_idx == Some(1),
             text: self.value.to_string(),
         };
         let increment = Button {
+            focus: self.focus_idx == Some(2),
             text: "+".to_string(),
             on_press: Message::Increment,
         };
@@ -83,6 +103,18 @@ fn interact(_w: &Ui) -> Vec<Message> {
             state: _,
         })) => return vec![Message::Quit],
         Ok(Event::Key(KeyEvent {
+            code: KeyCode::Tab,
+            kind: KeyEventKind::Press,
+            modifiers: _,
+            state: _,
+        })) => return vec![Message::NextFocus],
+        Ok(Event::Key(KeyEvent {
+            code: KeyCode::Enter,
+            kind: KeyEventKind::Press,
+            modifiers: _,
+            state: _,
+        })) => return vec![Message::SelectFocused],
+        Ok(Event::Key(KeyEvent {
             code: KeyCode::Char('d'),
             kind: KeyEventKind::Press,
             modifiers: _,
@@ -107,24 +139,40 @@ trait Widget {
 struct Ui {
     widgets: Vec<Box<dyn Widget>>,
 }
-//impl Widget for Pane {}
+impl Widget for Ui {
+    fn render(&self) {
+        for widget in self.widgets.iter() {
+            widget.render();
+        }
+    }
+}
 
 struct Button {
+    focus: bool,
     text: String,
     on_press: Message,
 }
 impl Widget for Button {
     fn render(&self) {
-        execute!(io::stdout(), style::Print(format!("[{}]", self.text))).unwrap();
+        if self.focus {
+            execute!(io::stdout(), style::Print(format!("<[{}]>", self.text))).unwrap();
+        } else {
+            execute!(io::stdout(), style::Print(format!(" [{}] ", self.text))).unwrap();
+        }
     }
 }
 
 struct Label {
+    focus: bool,
     text: String,
 }
 impl Widget for Label {
     fn render(&self) {
-        execute!(io::stdout(), style::Print(format!("({})", self.text))).unwrap();
+        if self.focus {
+            execute!(io::stdout(), style::Print(format!("<({})>", self.text))).unwrap();
+        } else {
+            execute!(io::stdout(), style::Print(format!(" ({}) ", self.text))).unwrap();
+        }
     }
 }
 
