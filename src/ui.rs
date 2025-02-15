@@ -1,5 +1,6 @@
+use crate::ui::view::RootView;
 use crate::ui::view::View;
-use crate::ui::view_model::ViewModel;
+use crate::ui::view_model::RootViewModel;
 use std::io;
 
 pub use crossterm::{
@@ -11,18 +12,20 @@ pub use crossterm::{
 
 use crossterm::event::KeyEventKind;
 
-mod view;
-mod view_model;
+mod synth;
+mod tracker;
+pub mod view;
+pub mod view_model;
 
 pub struct UI {
-    pub vm: ViewModel,
-    pub view: view::Main,
+    pub vm: RootViewModel,
+    pub view: view::RootView,
 }
 
 impl UI {
     pub fn new() -> Self {
-        let vm = ViewModel::new();
-        let view = view::Main::new();
+        let vm = RootViewModel::new();
+        let view = RootView::new();
         UI { vm, view }
     }
 
