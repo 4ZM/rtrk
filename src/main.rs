@@ -11,12 +11,12 @@ mod term;
 
 mod app {
     use crate::button::{button_rc, ButtonRc, ButtonView};
+    use crate::impl_focusable_with_focuschain;
     use crate::interaction::Event;
     use crate::pos::Pos;
     use crate::spinner;
     use crate::spinner::{spinner_rc, SpinnerRc, SpinnerView};
     use crate::widget::{FocusChain, Focusable, FocusableRc, View, Widget};
-
     #[derive(Copy, Clone, Debug, PartialEq)]
     pub enum Message {
         Reset,
@@ -75,24 +75,7 @@ mod app {
             }
         }
     }
-
-    // TODO : Some way to optimize this to allow direct forwarding?
-    impl Focusable for App {
-        fn has_focus(&self) -> bool {
-            self.focus_chain.has_focus()
-        }
-
-        fn defocus(&mut self) {
-            self.focus_chain.defocus();
-        }
-        fn focus(&mut self) {
-            self.focus_chain.focus();
-        }
-
-        fn next_focus(&mut self) {
-            self.focus_chain.next_focus();
-        }
-    }
+    impl_focusable_with_focuschain!(App, focus_chain);
 
     pub struct AppView {
         rst_btn: ButtonView<Message>,
@@ -133,6 +116,7 @@ mod app {
 
 mod spinner {
     use crate::button::{button_rc, ButtonRc, ButtonView};
+    use crate::impl_focusable_with_focuschain;
     use crate::interaction::Event;
     use crate::label::{label, Label};
     use crate::pos::Pos;
@@ -188,21 +172,8 @@ mod spinner {
             }
         }
     }
-    impl Focusable for Spinner {
-        fn has_focus(&self) -> bool {
-            self.focus_chain.has_focus()
-        }
 
-        fn next_focus(&mut self) {
-            self.focus_chain.next_focus()
-        }
-        fn defocus(&mut self) {
-            self.focus_chain.defocus()
-        }
-        fn focus(&mut self) {
-            self.focus_chain.focus()
-        }
-    }
+    impl_focusable_with_focuschain!(Spinner, focus_chain);
 
     pub struct SpinnerView {
         inc_btn: ButtonView<Message>,
@@ -348,6 +319,26 @@ mod widget {
 
     use crate::interaction::{Event, Renderer};
     use crate::pos::Pos;
+
+    #[macro_export]
+    macro_rules! impl_focusable_with_focuschain {
+        ($outer_type:ident, $inner_field:ident) => {
+            impl Focusable for $outer_type {
+                fn has_focus(&self) -> bool {
+                    self.$inner_field.has_focus()
+                }
+                fn focus(&mut self) {
+                    self.$inner_field.focus();
+                }
+                fn defocus(&mut self) {
+                    self.$inner_field.defocus();
+                }
+                fn next_focus(&mut self) {
+                    self.$inner_field.next_focus();
+                }
+            }
+        };
+    }
 
     pub struct FocusChain {
         pub focus_idx: Option<usize>,
