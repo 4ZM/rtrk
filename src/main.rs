@@ -4,9 +4,9 @@ mod term;
 
 // 1. DONE: Expand by adding reset-button in App
 // challenging for focus logic currently
-// 2. TODO: Expand by adding sum label in App
+// 2. DONE: Expand by adding sum label in App
 // challenging with root state that depends on component states
-// 3. TODO: Expand by adding fraction of whole to spinner labels
+// 3. DONE: Expand by adding fraction of whole to spinner labels
 // challenging since top App state is needed further down.
 
 mod app {
@@ -30,9 +30,15 @@ mod app {
         focus_chain: FocusChain,
         pub reset_btn: ButtonRc<Message>,
     }
+
     impl App {
         pub fn new() -> Self {
-            let spin = vec![spinner_rc(23), spinner_rc(42), spinner_rc(4711)];
+            let initial_values = vec![23, 42];
+            let initial_sum = initial_values.iter().sum();
+            let spin: Vec<SpinnerRc> = initial_values
+                .iter()
+                .map(|x| spinner_rc(initial_sum, *x))
+                .collect();
             let reset_btn = button_rc("RST", Message::Reset);
 
             let mut focus_chain = FocusChain::new();
@@ -47,21 +53,39 @@ mod app {
                 reset_btn,
             }
         }
+
+        fn sum(&self) -> i64 {
+            self.spin.iter().map(|s| s.borrow().value()).sum()
+        }
     }
     impl Widget<Message, AppView> for App {
         fn update(&mut self, msg: Message) {
             match msg {
-                Message::Spinner(i, msg) => self.spin[i].borrow_mut().update(msg),
+                Message::Spinner(i, msg) => {
+                    self.spin[i].borrow_mut().update(msg);
+
+                    // NB: sum() will borrow spinners and can't be called
+                    // when we have a mutable borrow in the loop. Get the sum first.
+                    let sum = self.sum();
+
+                    for s in self.spin.iter() {
+                        s.borrow_mut().update(spinner::Message::SumChanged(sum))
+                    }
+                }
                 Message::NextFocus => self.next_focus(),
-                Message::Reset => self.spin.iter().for_each(|s| s.borrow_mut().value = 0),
+                Message::Reset => {
+                    for s in self.spin.iter() {
+                        s.borrow_mut().update(spinner::Message::SetValue(0)); //self.spin.iter().for_each(|s| s.borrow_mut().value = 0),
+                    }
+                }
             };
         }
 
         fn view(&self, pos: Pos) -> AppView {
-            let sum = &self.spin.iter().map(|s| s.borrow().value).sum::<i64>();
+            //let sum = &self.spin.iter().map(|s| s.borrow().value).sum::<i64>();
 
             AppView {
-                sum_lbl: label(pos + Pos { r: 7, c: 10 }, &format!("SUM: {}", sum)),
+                sum_lbl: label(pos + Pos { r: 7, c: 10 }, &format!("SUM: {}", self.sum())),
                 rst_btn: self.reset_btn.borrow().view(pos + Pos { r: 6, c: 9 }),
                 spinners: self
                     .spin
@@ -135,17 +159,20 @@ mod spinner {
         NextFocus,
         Increment,
         Decrement,
+        SumChanged(i64),
+        SetValue(i64),
     }
 
     // TODO pub for test - ok?
     pub struct Spinner {
-        pub value: i64,
-        pub inc_btn: ButtonRc<Message>,
-        pub dec_btn: ButtonRc<Message>,
+        global_sum: i64, // Or could use fraction here?
+        value: i64,
+        inc_btn: ButtonRc<Message>,
+        dec_btn: ButtonRc<Message>,
         focus_chain: FocusChain,
     }
     impl Spinner {
-        pub fn new(initial_value: i64) -> Self {
+        pub fn new(global_sum: i64, initial_value: i64) -> Self {
             let inc_btn = button_rc("+", Message::Increment);
             let dec_btn = button_rc("-", Message::Decrement);
 
@@ -155,10 +182,14 @@ mod spinner {
 
             Self {
                 value: initial_value,
+                global_sum,
                 inc_btn,
                 dec_btn,
                 focus_chain,
             }
+        }
+        pub fn value(&self) -> i64 {
+            self.value
         }
     }
     impl Widget<Message, SpinnerView> for Spinner {
@@ -167,12 +198,22 @@ mod spinner {
                 Message::Increment => self.value += 1,
                 Message::Decrement => self.value -= 1,
                 Message::NextFocus => self.next_focus(),
+                Message::SetValue(v) => self.value = v,
+                Message::SumChanged(s) => self.global_sum = s,
             }
         }
 
         fn view(&self, pos: Pos) -> SpinnerView {
+            let lbl = match self.global_sum {
+                0 => format!("{} (-)", self.value), // Avoid div zero
+                sum => {
+                    let fraction = self.value as f32 / sum as f32;
+                    format!("{} ({:.0})", self.value, fraction * 100f32)
+                }
+            };
+
             SpinnerView {
-                lbl: label(pos + Pos { r: 1, c: 1 }, &self.value.to_string()),
+                lbl: label(pos + Pos { r: 1, c: 1 }, &lbl),
                 inc_btn: self.inc_btn.borrow().view(pos + Pos { r: 0, c: 0 }),
                 dec_btn: self.dec_btn.borrow().view(pos + Pos { r: 2, c: 0 }),
             }
@@ -208,8 +249,8 @@ mod spinner {
     }
 
     pub type SpinnerRc = Rc<RefCell<Spinner>>;
-    pub fn spinner_rc(value: i64) -> SpinnerRc {
-        Rc::new(RefCell::new(Spinner::new(value)))
+    pub fn spinner_rc(sum: i64, value: i64) -> SpinnerRc {
+        Rc::new(RefCell::new(Spinner::new(sum, value)))
     }
 }
 
@@ -317,14 +358,10 @@ mod label {
 }
 
 mod widget {
-    // TODO : Design issue: Does it make sense to split widget and view?
-    // If yes, how to reduce copy?
-    // If no, what are the implications
-    use std::cell::RefCell;
-    use std::rc::Rc;
-
     use crate::interaction::{Event, Renderer};
     use crate::pos::Pos;
+    use std::cell::RefCell;
+    use std::rc::Rc;
 
     #[macro_export]
     macro_rules! impl_focusable_with_focuschain {
@@ -522,31 +559,31 @@ mod tests {
 
     #[test]
     fn spinner_state_update_test() {
-        let mut app = spinner::Spinner::new(0);
-        assert_eq!(app.value, 0);
+        let mut app = spinner::Spinner::new(0, 0);
+        assert_eq!(app.value(), 0);
 
         let _ = app.update(spinner::Message::Increment);
         app.update(spinner::Message::Increment);
         app.update(spinner::Message::Decrement);
 
-        assert_eq!(app.value, 1);
+        assert_eq!(app.value(), 1);
     }
 
     #[test]
     fn spinner_rendering_test() {
-        let app = spinner::Spinner::new(0);
-        assert_eq!(app.value, 0);
+        let mut app = spinner::Spinner::new(0, 0);
+        assert_eq!(app.value(), 0);
 
         let view = app.view(Pos { r: 0, c: 0 });
         let mut renderer = TestRenderer::new();
         view.draw(&mut renderer);
-        assert_eq!(renderer.out, " + 0 - ");
+        assert_eq!(renderer.out, " + 0 (-) - ");
 
-        app.inc_btn.borrow_mut().focus();
+        app.update(spinner::Message::NextFocus);
         let view = app.view(Pos { r: 0, c: 0 });
         let mut renderer = TestRenderer::new();
         view.draw(&mut renderer);
-        assert_eq!(renderer.out, "[+]0 - ");
+        assert_eq!(renderer.out, "[+]0 (-) - ");
     }
 
     #[test]
