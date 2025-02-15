@@ -1,11 +1,28 @@
 #[derive(Copy, Clone)]
 pub enum Action {
+    RmChar(usize),
+    EnterChar(char),
     Tic,
     NextFocus,
     SelectCurrent,
     Play,
     Stop,
     Quit,
+}
+
+pub struct TextBoxModel {
+    pub focus: bool,
+    pub text: String,
+    pub width: usize,
+}
+impl TextBoxModel {
+    pub fn new(text: &str, width: usize, focus: bool) -> Self {
+        TextBoxModel {
+            focus,
+            width,
+            text: text.to_string(),
+        }
+    }
 }
 
 pub struct ButtonModel {
@@ -18,17 +35,16 @@ impl ButtonModel {
         ButtonModel {
             focus,
             on_click,
-            text: format!("{}", text).to_string(),
+            text: text.to_string(),
         }
     }
 }
 
 pub struct RootModel {
     pub playing: bool,
-    pub text: String,
-
     pub play_button: ButtonModel,
     pub stop_button: ButtonModel,
+    pub scroll_text_textbox: TextBoxModel,
 }
 impl RootModel {
     pub fn update(&mut self, a: Action) {
@@ -48,18 +64,33 @@ impl RootModel {
                     self.scroll_text()
                 }
             }
+            Action::EnterChar(c) => {
+                if self.scroll_text_textbox.width > self.scroll_text_textbox.text.len() {
+                    self.scroll_text_textbox.text.push(c);
+                }
+            }
+            Action::RmChar(i) => {
+                if i < self.scroll_text_textbox.text.len() {
+                    self.scroll_text_textbox.text.remove(i);
+                }
+            }
             _ => {}
         };
     }
     fn scroll_text(&mut self) {
-        if let Some(c) = self.text.pop() {
-            self.text.insert(0, c);
+        if let Some(c) = self.scroll_text_textbox.text.pop() {
+            self.scroll_text_textbox.text.insert(0, c);
         }
     }
 
     fn next_focus(&mut self) {
+        // Implement some kind of focus chain declarative
+
         if self.play_button.focus {
             self.play_button.focus = false;
+            self.scroll_text_textbox.focus = true;
+        } else if self.scroll_text_textbox.focus {
+            self.scroll_text_textbox.focus = false;
             self.stop_button.focus = true;
         } else if self.stop_button.focus {
             self.stop_button.focus = false;
@@ -69,8 +100,8 @@ impl RootModel {
 
     pub fn new() -> Self {
         RootModel {
-            text: ".-''-._".to_string(),
             playing: true,
+            scroll_text_textbox: TextBoxModel::new(".-''-._", 10, false),
             play_button: ButtonModel::new(">", true, |m: &mut RootModel| m.playing = true),
             stop_button: ButtonModel::new(".", false, |m: &mut RootModel| m.playing = false),
         }
