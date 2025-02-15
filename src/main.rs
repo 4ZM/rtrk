@@ -13,6 +13,7 @@ mod app {
     use crate::button::{button_rc, ButtonRc, ButtonView};
     use crate::impl_focusable_with_focuschain;
     use crate::interaction::Event;
+    use crate::label::{label, Label};
     use crate::pos::Pos;
     use crate::spinner;
     use crate::spinner::{spinner_rc, SpinnerRc, SpinnerView};
@@ -57,7 +58,10 @@ mod app {
         }
 
         fn view(&self, pos: Pos) -> AppView {
+            let sum = &self.spin.iter().map(|s| s.borrow().value).sum::<i64>();
+
             AppView {
+                sum_lbl: label(pos + Pos { r: 7, c: 10 }, &format!("SUM: {}", sum)),
                 rst_btn: self.reset_btn.borrow().view(pos + Pos { r: 6, c: 9 }),
                 spinners: self
                     .spin
@@ -79,6 +83,7 @@ mod app {
 
     pub struct AppView {
         rst_btn: ButtonView<Message>,
+        sum_lbl: Label,
         spinners: Vec<SpinnerView>,
     }
     impl View<Message> for AppView {
@@ -89,6 +94,7 @@ mod app {
             }
 
             self.rst_btn.draw(renderer);
+            self.sum_lbl.draw(renderer);
         }
         fn on_event(&self, e: Event) -> Vec<Message> {
             if let Event::Next = e {
