@@ -9,12 +9,12 @@ mod app {
     const SKIN: &str = r#"
 ┏━━━━━━━━━[ rtrk ]━━━━━━━━━━━━━━━━━━━━━━━━━━ , ━━━━━━ [v0.1] ━━━ =^..^= ━━━━━━━┓
 ┃                                     ______/ \_ _/\______,___/\ ___' _____,   ┃
-┃  01 .                               \         \   ____/       \   :/    /    ┃
-┃  02 : 1 -------- ------             /    <    /:  \ \    >    /   ;   _/     ┃
-┃  03 : 1 -------- ------            /         < |   \/       <<         \     ┃
-┃  04 : 2 -------- ------           /      :    \|    \    ;    \   ,     \    ┃
-┃  05 : 3 -------- ------           \      |     \    /    |     \  :      \   ┃
-┃  06 ' 1 -------- ------            \  ___^_____/   /\____|     /__:       \  ┃
+┃     .                               \         \   ____/       \   :/    /    ┃
+┃     :                               /    <    /:  \ \    >    /   ;   _/     ┃
+┃     :                              /         < |   \/       <<         \     ┃
+┃     :                             /      :    \|    \    ;    \   ,     \    ┃
+┃     :                             \      |     \    /    |     \  :      \   ┃
+┃     '                              \  ___^_____/   /\____|     /__:       \  ┃
 ┃                                     \/   ;      \ /  4ZM  \___/   |_______/  ┃
 ┠──────────────────────────────────────────────────'───────────────────────────┨
 ┃ ▚▚▚▚▚▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚█████                            |    |   |   |        ┃
@@ -29,14 +29,15 @@ mod app {
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 "#;
 
+    use crate::impl_focusable_with_focuschain;
     use crate::interaction::Event;
     use crate::pos::Pos;
-    use crate::voice::{voice_rc, VoiceRc, VoiceView};
+    use crate::voice_list;
+    use crate::voice_list::{voicelist_rc, VoiceListRc, VoiceListView};
     use crate::widget::button::{button_rc, ButtonRc, ButtonView};
     use crate::widget::focus::{FocusChain, FocusableRc};
     use crate::widget::label::{label, Label};
     use crate::widget::{Focusable, View, Widget};
-    use crate::{impl_focusable_with_focuschain, voice};
 
     #[derive(Copy, Clone, Debug, PartialEq)]
     pub enum Message {
@@ -44,11 +45,11 @@ mod app {
         Stop,
         Rewind,
         NextFocus,
-        Voice(voice::Message),
+        VoiceList(voice_list::Message),
     }
 
     pub struct App {
-        voice: VoiceRc,
+        voices: VoiceListRc,
         play_btn: ButtonRc<Message>,
         stop_btn: ButtonRc<Message>,
         rewind_btn: ButtonRc<Message>,
@@ -57,19 +58,19 @@ mod app {
 
     impl App {
         pub fn new() -> Self {
-            let voice = voice_rc();
+            let voices = voicelist_rc();
             let play_btn = button_rc(">", Message::Play);
             let stop_btn = button_rc(".", Message::Stop);
             let rewind_btn = button_rc("<<", Message::Rewind);
 
             let mut focus_chain = FocusChain::new();
-            focus_chain.push(voice.clone() as FocusableRc);
+            focus_chain.push(voices.clone() as FocusableRc);
             focus_chain.push(rewind_btn.clone() as FocusableRc);
             focus_chain.push(stop_btn.clone() as FocusableRc);
             focus_chain.push(play_btn.clone() as FocusableRc);
 
             Self {
-                voice,
+                voices,
                 rewind_btn,
                 stop_btn,
                 play_btn,
@@ -81,7 +82,7 @@ mod app {
     impl Widget<Message, AppView> for App {
         fn update(&mut self, msg: Message) {
             match msg {
-                Message::Voice(m) => self.voice.borrow_mut().update(m),
+                Message::VoiceList(m) => self.voices.borrow_mut().update(m),
                 Message::Rewind => {}
                 Message::Stop => {}
                 Message::Play => {}
@@ -91,7 +92,7 @@ mod app {
 
         fn view(&self, pos: Pos) -> AppView {
             AppView {
-                voice: self.voice.borrow().view(pos + Pos { r: 3, c: 8 }),
+                voices: self.voices.borrow().view(pos + Pos { r: 3, c: 3 }),
                 skin: label(Pos { r: 0, c: 0 }, SKIN),
                 rewind_btn: self.rewind_btn.borrow().view(pos + Pos { r: 11, c: 58 }),
                 stop_btn: self.stop_btn.borrow().view(pos + Pos { r: 11, c: 63 }),
@@ -102,7 +103,7 @@ mod app {
     impl_focusable_with_focuschain!(App, focus_chain);
 
     pub struct AppView {
-        voice: VoiceView,
+        voices: VoiceListView,
         rewind_btn: ButtonView<Message>,
         stop_btn: ButtonView<Message>,
         play_btn: ButtonView<Message>,
@@ -111,7 +112,7 @@ mod app {
     impl View<Message> for AppView {
         fn draw(&self, renderer: &mut dyn crate::interaction::Renderer) {
             self.skin.draw(renderer);
-            self.voice.draw(renderer);
+            self.voices.draw(renderer);
             self.rewind_btn.draw(renderer);
             self.stop_btn.draw(renderer);
             self.play_btn.draw(renderer);
@@ -123,10 +124,10 @@ mod app {
             }
 
             let mut msgs: Vec<Message> = vec![];
-            self.voice
+            self.voices
                 .on_event(e)
                 .iter()
-                .for_each(|&m| msgs.push(Message::Voice(m)));
+                .for_each(|&m| msgs.push(Message::VoiceList(m)));
             self.rewind_btn
                 .on_event(e)
                 .iter()
@@ -242,6 +243,133 @@ mod voice {
     pub type VoiceRc = Rc<RefCell<Voice>>;
     pub fn voice_rc() -> VoiceRc {
         Rc::new(RefCell::new(Voice::new()))
+    }
+}
+
+mod voice_list {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use itertools::Itertools;
+
+    use crate::interaction::Event;
+    use crate::pos::Pos;
+    use crate::voice::voice_rc;
+    use crate::voice::{VoiceRc, VoiceView};
+    use crate::widget::focus::{FocusChain, FocusableRc};
+    use crate::widget::label::{label, Label};
+    use crate::widget::{Focusable, View, Widget};
+    use crate::{impl_focusable_with_focuschain, voice};
+
+    #[derive(Copy, Clone, Debug, PartialEq)]
+    pub enum Message {
+        NextFocus,
+        Voice(usize, voice::Message),
+    }
+
+    pub struct VoiceList {
+        focus_chain: FocusChain,
+        voices: Vec<VoiceRc>,
+        first_voice_idx: usize,
+        selected_voice_idx: usize,
+        list_window_len: usize,
+    }
+
+    impl VoiceList {
+        pub fn new() -> Self {
+            let list_window_len = 6;
+            let voices: Vec<_> = (0..255).map(|_| voice_rc()).collect();
+
+            let mut focus_chain = FocusChain::new();
+            focus_chain.push(voices[0x20].clone() as FocusableRc);
+
+            Self {
+                focus_chain,
+                voices,
+                first_voice_idx: 0x1F, // TODO Set some random number here - should be 0
+                selected_voice_idx: 0x20, // TODO Set some random number here - should be 0
+                list_window_len,
+            }
+        }
+    }
+
+    impl Widget<Message, VoiceListView> for VoiceList {
+        fn update(&mut self, msg: Message) {
+            match msg {
+                Message::NextFocus => self.next_focus(),
+                Message::Voice(idx, vm) => self.voices[idx].borrow_mut().update(vm),
+            };
+        }
+
+        fn view(&self, pos: Pos) -> VoiceListView {
+            VoiceListView::new(
+                pos,
+                &self.voices,
+                self.first_voice_idx,
+                self.list_window_len,
+            )
+        }
+    }
+    impl_focusable_with_focuschain!(VoiceList, focus_chain);
+
+    pub struct VoiceListView {
+        voices: Vec<VoiceView>,
+        idx_offset: usize,
+        idx_labels: Vec<Label>,
+    }
+
+    impl VoiceListView {
+        pub fn new(
+            pos: Pos,
+            voices: &Vec<VoiceRc>,
+            first_voice_idx: usize,
+            list_len: usize,
+        ) -> Self {
+            let voices = &voices[first_voice_idx..first_voice_idx + list_len];
+            Self {
+                voices: voices
+                    .iter()
+                    .enumerate()
+                    .map(|(i, v)| v.borrow().view(pos + Pos { r: i as u16, c: 5 }))
+                    .collect(),
+                idx_offset: first_voice_idx,
+                idx_labels: voices
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| {
+                        label(
+                            pos + Pos { r: i as u16, c: 0 },
+                            &format!("{:02X}", i + first_voice_idx),
+                        )
+                    })
+                    .collect(),
+            }
+        }
+    }
+    impl View<Message> for VoiceListView {
+        fn draw(&self, renderer: &mut dyn crate::interaction::Renderer) {
+            self.idx_labels.iter().for_each(|v| v.draw(renderer));
+            self.voices.iter().for_each(|v| v.draw(renderer));
+        }
+        fn on_event(&self, e: Event) -> Vec<Message> {
+            if let Event::NextFocus = e {
+                return vec![Message::NextFocus];
+            }
+
+            let mut msgs: Vec<Message> = vec![];
+            for (i, v) in self.voices.iter().enumerate() {
+                v.on_event(e)
+                    .iter()
+                    .for_each(|&m| msgs.push(Message::Voice(i + self.idx_offset, m)));
+            }
+
+            msgs
+        }
+    }
+
+    pub type VoiceListRc = Rc<RefCell<VoiceList>>;
+    pub fn voicelist_rc() -> VoiceListRc {
+        Rc::new(RefCell::new(VoiceList::new()))
     }
 }
 

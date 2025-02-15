@@ -17,7 +17,7 @@ pub fn start<Message, V: View<Message>>(app: &mut dyn Widget<Message, V>) {
         view.draw(&mut renderer);
         renderer.flush();
 
-        std::thread::sleep(Duration::from_millis(20));
+        std::thread::sleep(Duration::from_millis(30));
 
         // Get UI event interactions
         let mut unprocessed_messages = VecDeque::<Message>::from([]);
