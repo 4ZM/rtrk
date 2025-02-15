@@ -1,8 +1,111 @@
 mod pos;
 
 mod app {
-    use std::num::IntErrorKind;
+    use crate::interaction::Event;
+    use crate::pos::Pos;
+    use crate::spinner;
+    use crate::spinner::{Spinner, SpinnerView};
+    use crate::widget::{Focusable, View, Widget};
+    use itertools::Itertools;
 
+    #[derive(Copy, Clone, Debug, PartialEq)]
+    pub enum Message {
+        NextFocus,
+        Spinner(usize, spinner::Message),
+    }
+
+    pub struct App {
+        pub spin: Vec<Spinner>,
+    }
+    impl App {
+        pub fn new() -> Self {
+            Self {
+                spin: vec![
+                    Spinner::new(Pos { r: 0, c: 0 }, 23),
+                    Spinner::new(Pos { r: 0, c: 10 }, 42),
+                    Spinner::new(Pos { r: 0, c: 20 }, 4711),
+                ],
+            }
+        }
+    }
+    impl Widget<Message, AppView> for App {
+        // fn pos(&self) -> Pos {
+        //     self.pos
+        // }
+
+        fn update(&mut self, msg: Message) {
+            match msg {
+                Message::Spinner(i, msg) => self.spin[i].update(msg),
+                Message::NextFocus => {
+                    let spinners = self.spin.len();
+
+                    match self.spin.iter().find_position(|&s| s.has_focus()) {
+                        Some((focused_spinner_idx, _)) => {
+                            self.spin[focused_spinner_idx].update(spinner::Message::NextFocus);
+                            if !self.spin[focused_spinner_idx].has_focus() {
+                                // Moving on to next spinner unless it's the last
+                                if focused_spinner_idx != spinners - 1 {
+                                    self.spin[(focused_spinner_idx + 1usize) % spinners]
+                                        .update(spinner::Message::NextFocus);
+                                }
+                            }
+                        }
+                        None => {
+                            self.spin[0].update(spinner::Message::NextFocus);
+                        }
+                    }
+                }
+            };
+        }
+
+        fn view(&self) -> AppView {
+            AppView {
+                spinners: self.spin.iter().map(|s| s.view()).collect(),
+            }
+        }
+    }
+    impl Focusable for App {
+        // fn has_focus(&self) -> bool {
+        //     true
+        // }
+        // fn accepts_focus(&self) -> bool {
+        //     true
+        // }
+        // fn defocus(&mut self) {}
+        // fn focus(&mut self) {}
+    }
+    // impl<Message: Copy> View<Message> for App {
+    //     fn draw(&self, _renderer: &mut dyn crate::interaction::Renderer) {}
+    // }
+
+    pub struct AppView {
+        spinners: Vec<SpinnerView>,
+    }
+    impl View<Message> for AppView {
+        fn draw(&self, renderer: &mut dyn crate::interaction::Renderer) {
+            for s in self.spinners.iter() {
+                s.draw(renderer);
+            }
+        }
+        fn on_event(&self, e: Event) -> Vec<Message> {
+            if let Event::Next = e {
+                return vec![Message::NextFocus];
+            }
+
+            let mut msgs: Vec<Message> = vec![];
+            for (i, s) in self.spinners.iter().enumerate() {
+                let new_msgs = s.on_event(e);
+                for m in new_msgs {
+                    msgs.push(Message::Spinner(i, m));
+                }
+            }
+
+            msgs
+        }
+    }
+}
+
+mod spinner {
     use crate::button::{button, Button, ButtonView};
     use crate::interaction::Event;
     use crate::label::{label, Label};
@@ -16,29 +119,28 @@ mod app {
         Decrement,
     }
 
-    pub struct App {
+    pub struct Spinner {
         pos: Pos,
         pub value: i64,               // TODO pub for test - ok?
         pub inc_btn: Button<Message>, // they have the focus state, so can't be just view
         pub dec_btn: Button<Message>,
     }
-    impl App {
-        pub fn new() -> Self {
-            let pos = Pos::default();
+    impl Spinner {
+        pub fn new(pos: Pos, initial_value: i64) -> Self {
             Self {
                 pos,
-                value: 0,
+                value: initial_value,
                 inc_btn: button(pos + Pos { r: 0, c: 0 }, "+", Message::Increment),
                 dec_btn: button(pos + Pos { r: 2, c: 0 }, "-", Message::Decrement),
             }
         }
     }
-    impl Widget<Message, AppView> for App {
-        fn pos(&self) -> Pos {
-            self.pos
-        }
+    impl Widget<Message, SpinnerView> for Spinner {
+        // fn pos(&self) -> Pos {
+        //     self.pos
+        // }
 
-        fn update(&mut self, msg: Message) -> Vec<Message> {
+        fn update(&mut self, msg: Message) {
             match msg {
                 Message::Increment => self.value += 1,
                 Message::Decrement => self.value -= 1,
@@ -53,24 +155,25 @@ mod app {
                     self.inc_btn.focus();
                 }
             }
-            vec![]
         }
 
-        fn view(&self) -> AppView {
-            AppView {
+        fn view(&self) -> SpinnerView {
+            SpinnerView {
                 lbl: label(self.pos + Pos { r: 1, c: 1 }, &self.value.to_string()),
                 inc_btn: self.inc_btn.view(),
                 dec_btn: self.dec_btn.view(),
             }
         }
     }
-    impl Focusable for App {
+    impl Focusable for Spinner {
         fn has_focus(&self) -> bool {
-            true
+            self.inc_btn.has_focus() || self.dec_btn.has_focus()
         }
-        fn accepts_focus(&self) -> bool {
-            true
-        }
+
+        // TODO DO we really need it? Only makes sense in polymorphic case...
+        // fn accepts_focus(&self) -> bool {
+        //     true
+        // }
 
         fn defocus(&mut self) {
             self.inc_btn.defocus();
@@ -80,16 +183,16 @@ mod app {
             self.inc_btn.focus(); // Randomly pick one to focus -- THIS IS WRONG
         }
     }
-    impl<Message: Copy> View<Message> for App {
-        fn draw(&self, _renderer: &mut dyn crate::interaction::Renderer) {}
-    }
+    // impl<Message: Copy> View<Message> for Spinner {
+    //     fn draw(&self, _renderer: &mut dyn crate::interaction::Renderer) {}
+    // }
 
-    pub struct AppView {
+    pub struct SpinnerView {
         inc_btn: ButtonView<Message>,
         dec_btn: ButtonView<Message>,
         lbl: Label,
     }
-    impl View<Message> for AppView {
+    impl View<Message> for SpinnerView {
         fn draw(&self, renderer: &mut dyn crate::interaction::Renderer) {
             self.inc_btn.draw(renderer);
             self.lbl.draw(renderer);
@@ -124,12 +227,10 @@ mod button {
         pub has_focus: bool,
     }
     impl<Message: Copy> Widget<Message, ButtonView<Message>> for Button<Message> {
-        fn pos(&self) -> Pos {
-            self.pos
-        }
-        fn update(&mut self, _msg: Message) -> Vec<Message> {
-            vec![]
-        }
+        // fn pos(&self) -> Pos {
+        //     self.pos
+        // }
+        fn update(&mut self, _msg: Message) {}
         fn view(&self) -> ButtonView<Message> {
             ButtonView::<Message> {
                 text: self.text.clone(),
@@ -168,9 +269,9 @@ mod button {
         fn has_focus(&self) -> bool {
             self.has_focus
         }
-        fn accepts_focus(&self) -> bool {
-            true
-        }
+        // fn accepts_focus(&self) -> bool {
+        //     true
+        // }
         fn focus(&mut self) {
             self.has_focus = true
         }
@@ -194,7 +295,7 @@ mod button {
 mod label {
 
     use crate::pos::Pos;
-    use crate::widget::{Focusable, View, Widget};
+    use crate::widget::View;
 
     pub struct Label {
         pos: Pos,
@@ -216,15 +317,15 @@ mod label {
 
 mod widget {
     use crate::interaction::{Event, Renderer};
-    use crate::pos::Pos;
+    //use crate::pos::Pos;
 
     pub trait Focusable {
         fn has_focus(&self) -> bool {
             false
         }
-        fn accepts_focus(&self) -> bool {
-            false
-        }
+        // fn accepts_focus(&self) -> bool {
+        //     false
+        // }
         fn focus(&mut self) {}
         fn defocus(&mut self) {}
     }
@@ -232,9 +333,9 @@ mod widget {
     /// A Widget is statefull and has the update() mechanism to mutate it's state.
     /// It create views that are entirely disconnected from itself (no back ref with a lifetime).
     pub trait Widget<Message: Copy, V: View<Message>>: Focusable {
-        fn pos(&self) -> Pos;
+        //fn pos(&self) -> Pos;
 
-        fn update(&mut self, msg: Message) -> Vec<Message>; // TODO return message should be different type
+        fn update(&mut self, msg: Message);
 
         fn view(&self) -> V;
     }
@@ -244,7 +345,7 @@ mod widget {
     /// "just views" like labels (no state), some things like buttons are almost no state but are
     /// focusable (i.e. have state)
     pub trait View<Message> {
-        fn on_event(&self, e: Event) -> Vec<Message> {
+        fn on_event(&self, _e: Event) -> Vec<Message> {
             vec![]
         }
         fn draw(&self, _renderer: &mut dyn Renderer);
@@ -257,7 +358,7 @@ mod interaction {
     #[derive(Copy, Clone, Debug, PartialEq)]
     pub enum Event {
         Next,
-        Back,
+        //Back, // TODO Add back support
         Activate,
         Quit,
         Char(char),
@@ -381,7 +482,7 @@ mod runtime {
     use crate::interaction::Renderer;
     use crate::term;
     use crate::widget::View;
-    use crate::widget::{Focusable, Widget};
+    use crate::widget::Widget;
     use std::time::Duration;
 
     // Runtime
@@ -390,7 +491,7 @@ mod runtime {
         let event_collector = term::CrosstermEventCollector {};
 
         let mut app = app::App::new();
-        app.inc_btn.focus();
+        //        app.inc_btn.focus();
 
         'app: loop {
             // Render state
@@ -414,8 +515,9 @@ mod runtime {
 
             // Update widgets
             while let Some(msg) = unprocessed_messages.pop() {
-                let mut new_messages = app.update(msg);
-                unprocessed_messages.append(&mut new_messages);
+                //let mut new_messages =
+                app.update(msg);
+                //unprocessed_messages.append(&mut new_messages);
             }
         }
     }
