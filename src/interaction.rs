@@ -32,3 +32,27 @@ pub trait Renderer {
 pub trait EventCollector {
     fn poll_events(&self) -> Vec<crate::interaction::Event>;
 }
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+
+    pub struct TestRenderer {
+        pub out: String,
+    }
+    impl TestRenderer {
+        pub fn new() -> Self {
+            Self { out: String::new() }
+        }
+    }
+    impl Renderer for TestRenderer {
+        fn clear(&mut self) {}
+        fn flush(&mut self) {}
+        fn render_str(&mut self, _pos: Pos, text: &str) {
+            self.out += text;
+        }
+        fn render_fmt_str(&mut self, _pos: Pos, text: &str, _style: Style) {
+            self.out += text;
+        }
+    }
+}

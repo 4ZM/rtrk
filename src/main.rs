@@ -1,18 +1,21 @@
 mod interaction;
 mod pos;
+mod runtime;
 mod term;
+mod widget;
 
 mod app {
-    use crate::button::{button_rc, ButtonRc, ButtonView};
     use crate::impl_focusable_with_focuschain;
     use crate::interaction::Event;
-    use crate::label::{label, Label};
     use crate::pos::Pos;
     use crate::spinner;
     use crate::spinner::{spinner_rc, SpinnerRc, SpinnerView};
-    use crate::textbox;
-    use crate::textbox::{textbox_rc, TextBoxRc, TextBoxView};
-    use crate::widget::{FocusChain, Focusable, FocusableRc, View, Widget};
+    use crate::widget::button::{button_rc, ButtonRc, ButtonView};
+    use crate::widget::focus::{FocusChain, FocusableRc};
+    use crate::widget::label::{label, Label};
+    use crate::widget::textbox;
+    use crate::widget::textbox::{textbox_rc, TextBoxRc, TextBoxView};
+    use crate::widget::{Focusable, View, Widget};
 
     #[derive(Copy, Clone, Debug, PartialEq)]
     pub enum Message {
@@ -167,12 +170,13 @@ mod app {
 }
 
 mod spinner {
-    use crate::button::{button_rc, ButtonRc, ButtonView};
     use crate::impl_focusable_with_focuschain;
     use crate::interaction::Event;
-    use crate::label::{label, Label};
     use crate::pos::Pos;
-    use crate::widget::{FocusChain, Focusable, FocusableRc, View, Widget};
+    use crate::widget::button::{button_rc, ButtonRc, ButtonView};
+    use crate::widget::focus::{FocusChain, FocusableRc};
+    use crate::widget::label::{label, Label};
+    use crate::widget::{Focusable, View, Widget};
     use std::cell::RefCell;
     use std::rc::Rc;
 
@@ -275,477 +279,18 @@ mod spinner {
     }
 }
 
-mod button {
-    use std::cell::RefCell;
-    use std::rc::Rc;
-
-    use crate::interaction::Event;
-    use crate::interaction::Renderer;
-    use crate::pos::Pos;
-    use crate::widget::{Focusable, View, Widget};
-
-    pub struct Button<Message> {
-        text: String,
-        on_press: Message,
-        pub has_focus: bool,
-    }
-
-    impl<Message: Copy> Widget<Message, ButtonView<Message>> for Button<Message> {
-        fn update(&mut self, _msg: Message) {}
-        fn view(&self, pos: Pos) -> ButtonView<Message> {
-            ButtonView::<Message> {
-                text: self.text.clone(),
-                on_press: self.on_press,
-                pos,
-                has_focus: self.has_focus,
-            }
-        }
-    }
-
-    pub struct ButtonView<Message> {
-        text: String,
-        on_press: Message,
-        pos: Pos,
-        has_focus: bool,
-    }
-
-    impl<Message: Copy> View<Message> for ButtonView<Message> {
-        fn on_event(&self, e: Event) -> Vec<Message> {
-            match (e, self.has_focus) {
-                (Event::Activate, true) => {
-                    vec![self.on_press]
-                }
-                _ => vec![],
-            }
-        }
-        fn draw(&self, renderer: &mut dyn Renderer) {
-            if self.has_focus {
-                renderer.render_str(self.pos, &format!("[{}]", &self.text));
-            } else {
-                renderer.render_str(self.pos, &format!(" {} ", &self.text));
-            }
-        }
-    }
-    impl<Message> Focusable for Button<Message> {
-        fn has_focus(&self) -> bool {
-            self.has_focus
-        }
-        fn next_focus(&mut self) {
-            self.has_focus = !self.has_focus;
-        }
-        fn focus(&mut self) {
-            self.has_focus = true
-        }
-        fn defocus(&mut self) {
-            self.has_focus = false
-        }
-    }
-
-    pub fn button<Message>(text: &str, on_press: Message) -> Button<Message> {
-        Button {
-            text: text.to_string(),
-            on_press,
-            has_focus: false,
-        }
-    }
-
-    pub type ButtonRc<Message> = Rc<RefCell<Button<Message>>>;
-    pub fn button_rc<Message>(text: &str, on_press: Message) -> ButtonRc<Message> {
-        Rc::new(RefCell::new(button(text, on_press)))
-    }
-}
-
-mod label {
-
-    use crate::pos::Pos;
-    use crate::widget::View;
-
-    pub struct Label {
-        pos: Pos,
-        text: String,
-    }
-
-    impl View<()> for Label {
-        fn draw(&self, renderer: &mut dyn crate::interaction::Renderer) {
-            renderer.render_str(self.pos, &format!("{}", &self.text));
-        }
-    }
-    pub fn label(pos: Pos, text: &str) -> Label {
-        Label {
-            pos,
-            text: text.to_string(),
-        }
-    }
-}
-
-mod textbox {
-    use crate::interaction::{Event, Renderer, Style};
-    use crate::pos::Pos;
-    use crate::widget::{Focusable, View, Widget};
-    use std::cell::RefCell;
-    use std::rc::Rc;
-
-    #[derive(Copy, Clone, Debug, PartialEq)]
-    pub enum Message {
-        EnterChar(char),
-        Del,
-        DelBack,
-        CursorLeft,
-        CursorRight,
-    }
-
-    pub struct TextBox {
-        width: usize,
-        carret_idx: usize,
-        text: String,
-        has_focus: bool,
-    }
-    impl TextBox {
-        pub fn new(width: usize) -> Self {
-            Self {
-                width,
-                carret_idx: 0,
-                text: " ".repeat(width).to_string(),
-                has_focus: false,
-            }
-        }
-        pub fn text(&self) -> &str {
-            &self.text
-        }
-    }
-
-    impl Widget<Message, TextBoxView> for TextBox {
-        fn update(&mut self, msg: Message) {
-            match msg {
-                Message::EnterChar(c) => {
-                    self.text
-                        .replace_range(self.carret_idx..self.carret_idx + 1, &c.to_string());
-
-                    if self.carret_idx < self.width - 1 {
-                        self.carret_idx += 1;
-                    }
-                }
-                Message::Del => {
-                    self.text
-                        .replace_range(self.carret_idx..self.carret_idx + 1, " ");
-                }
-                Message::DelBack => {
-                    if self.carret_idx > 0 {
-                        self.carret_idx -= 1;
-                    }
-                    self.text
-                        .replace_range(self.carret_idx..self.carret_idx + 1, " ");
-                }
-                Message::CursorRight => {
-                    self.carret_idx = (self.carret_idx + 1) % self.width;
-                }
-                Message::CursorLeft => {
-                    if self.carret_idx == 0 {
-                        self.carret_idx = self.width - 1;
-                    } else {
-                        self.carret_idx -= 1;
-                    }
-                }
-            }
-        }
-        fn view(&self, pos: Pos) -> TextBoxView {
-            TextBoxView::new(pos, self.carret_idx, &self.text, self.has_focus)
-        }
-    }
-    impl Focusable for TextBox {
-        fn has_focus(&self) -> bool {
-            self.has_focus
-        }
-        fn next_focus(&mut self) {
-            self.has_focus = !self.has_focus;
-        }
-        fn focus(&mut self) {
-            self.has_focus = true
-        }
-        fn defocus(&mut self) {
-            self.has_focus = false
-        }
-    }
-
-    pub struct TextBoxView {
-        pos: Pos,
-        text: String,
-        has_focus: bool,
-        carret_idx: usize,
-    }
-
-    impl TextBoxView {
-        fn new(pos: Pos, carret_idx: usize, text: &str, has_focus: bool) -> Self {
-            Self {
-                pos,
-                carret_idx,
-                text: text.to_string().replace(" ", "-"),
-                has_focus,
-            }
-        }
-    }
-    impl View<Message> for TextBoxView {
-        fn on_event(&self, e: Event) -> Vec<Message> {
-            if !self.has_focus {
-                return vec![];
-            }
-
-            let msgs = match e {
-                Event::Activate => vec![],
-                Event::Char(c) => vec![Message::EnterChar(c)],
-                Event::Left => vec![Message::CursorLeft],
-                Event::Right => vec![Message::CursorRight],
-                Event::Del => vec![Message::Del],
-                Event::DelBack => vec![Message::DelBack],
-                _ => vec![],
-            };
-
-            msgs
-        }
-
-        fn draw(&self, renderer: &mut dyn Renderer) {
-            if self.has_focus {
-                renderer.render_fmt_str(
-                    self.pos,
-                    format!("{}", &self.text[..self.carret_idx]).as_str(),
-                    Style::Highlight,
-                );
-                renderer.render_fmt_str(
-                    self.pos
-                        + Pos {
-                            r: 0,
-                            c: self.carret_idx as u16,
-                        },
-                    format!("{}", &self.text[self.carret_idx..self.carret_idx + 1]).as_str(),
-                    Style::Invert,
-                );
-                renderer.render_fmt_str(
-                    self.pos
-                        + Pos {
-                            r: 0,
-                            c: self.carret_idx as u16 + 1,
-                        },
-                    format!("{}", &self.text[self.carret_idx + 1..]).as_str(),
-                    Style::Highlight,
-                );
-            } else {
-                renderer.render_str(self.pos, format!("{}", &self.text).as_str());
-            }
-        }
-    }
-
-    pub fn textbox(width: usize) -> TextBox {
-        TextBox::new(width)
-    }
-
-    pub type TextBoxRc = Rc<RefCell<TextBox>>;
-    pub fn textbox_rc(width: usize) -> TextBoxRc {
-        Rc::new(RefCell::new(textbox(width)))
-    }
-}
-
-mod widget {
-    use crate::interaction::{Event, Renderer};
-    use crate::pos::Pos;
-    use std::cell::RefCell;
-    use std::rc::Rc;
-
-    #[macro_export]
-    macro_rules! impl_focusable_with_focuschain {
-        ($outer_type:ident, $inner_field:ident) => {
-            impl Focusable for $outer_type {
-                fn has_focus(&self) -> bool {
-                    self.$inner_field.has_focus()
-                }
-                fn focus(&mut self) {
-                    self.$inner_field.focus();
-                }
-                fn defocus(&mut self) {
-                    self.$inner_field.defocus();
-                }
-                fn next_focus(&mut self) {
-                    self.$inner_field.next_focus();
-                }
-            }
-        };
-    }
-
-    pub struct FocusChain {
-        pub focus_idx: Option<usize>,
-        pub focusables: Vec<FocusableRc>,
-    }
-
-    impl Focusable for FocusChain {
-        fn has_focus(&self) -> bool {
-            self.focus_idx.is_some()
-        }
-
-        fn defocus(&mut self) {
-            for f in self.focusables.iter_mut() {
-                f.borrow_mut().defocus();
-            }
-            self.focus_idx = None;
-        }
-        fn focus(&mut self) {
-            // Reset to get first widget in tree
-            self.focus_idx = None;
-            self.next_focus();
-        }
-
-        fn next_focus(&mut self) {
-            self.focus_idx = match self.focus_idx {
-                None => {
-                    // Start a new focus cycle
-                    self.focusables[0].borrow_mut().next_focus();
-                    Some(0)
-                }
-                Some(idx) => {
-                    // Advance the child tree
-                    self.focusables[idx].borrow_mut().next_focus();
-
-                    // Still same child tree that has focus?
-                    if self.focusables[idx].borrow().has_focus() {
-                        Some(idx)
-                    } else {
-                        // Child tree lost focus
-                        if idx == self.focusables.len() - 1 {
-                            // Last subtree lost focus, nothing left
-                            None
-                        } else {
-                            // Start traversing next subtree
-                            self.focusables[idx + 1].borrow_mut().next_focus();
-                            Some(idx + 1)
-                        }
-                    }
-                }
-            };
-        }
-    }
-
-    impl FocusChain {
-        pub fn new() -> Self {
-            Self {
-                focus_idx: None,
-                focusables: vec![],
-            }
-        }
-
-        pub fn push(&mut self, focusable: Rc<RefCell<dyn Focusable>>) {
-            self.focusables.push(focusable);
-        }
-    }
-
-    pub type FocusableRc = Rc<RefCell<dyn Focusable>>;
-    pub trait Focusable {
-        /// Has focus directly or if any of it's children has focus
-        fn has_focus(&self) -> bool;
-        fn focus(&mut self);
-        fn defocus(&mut self);
-
-        /// Advance focus recursively
-        fn next_focus(&mut self);
-    }
-
-    /// A Widget is statefull and has the update() mechanism to mutate it's state.
-    /// It create views that are entirely disconnected from itself (no back ref with a lifetime).
-    pub trait Widget<Message, V: View<Message>>: Focusable {
-        fn update(&mut self, msg: Message);
-        fn view(&self, pos: Pos) -> V;
-    }
-
-    /// A View can have data, but is stateless and immutable.  It's purpose is to interact with the
-    /// UI framework wrappers to draw and translate events to application messages.  Some things are
-    /// "just views" like labels (no state), some things like buttons are almost no state but are
-    /// focusable (i.e. have state)
-    pub trait View<Message> {
-        fn on_event(&self, _e: Event) -> Vec<Message> {
-            vec![]
-        }
-        fn draw(&self, _renderer: &mut dyn Renderer);
-    }
-}
-
-mod runtime {
-
-    use crate::app;
-    use crate::interaction;
-    use crate::interaction::EventCollector;
-    use crate::interaction::Renderer;
-    use crate::pos::Pos;
-    use crate::term;
-    use crate::widget::View;
-    use crate::widget::Widget;
-    use std::collections::VecDeque;
-    use std::time::Duration;
-
-    // Runtime
-    pub fn start() {
-        let mut renderer = term::CrosstermRenderer::new(std::io::stdout());
-        let event_collector = term::CrosstermEventCollector {};
-
-        let mut app = app::App::new();
-        //        app.inc_btn.focus();
-
-        'app: loop {
-            // Render state
-            let view = app.view(Pos { r: 0, c: 0 });
-            renderer.clear();
-            view.draw(&mut renderer);
-            renderer.flush();
-
-            std::thread::sleep(Duration::from_millis(20));
-
-            // Get UI event interactions
-            let mut unprocessed_messages = VecDeque::<app::Message>::from([]);
-            for event in event_collector.poll_events() {
-                let event_messages = match event {
-                    interaction::Event::Quit => break 'app,
-                    _ => view.on_event(event),
-                };
-                unprocessed_messages.extend(&event_messages);
-            }
-
-            // Update widgets
-            while let Some(msg) = unprocessed_messages.pop_front() {
-                app.update(msg);
-            }
-        }
-    }
-}
-
 fn main() {
-    runtime::start();
+    let mut app = app::App::new();
+    runtime::start(&mut app);
 }
 
 #[cfg(test)]
 mod tests {
 
-    use interaction::*;
-
-    use super::button::*;
-    use super::label::*;
+    use super::interaction::tests::TestRenderer;
     use super::pos::*;
     use super::widget::*;
     use super::*;
-
-    struct TestRenderer {
-        pub out: String,
-    }
-    impl TestRenderer {
-        fn new() -> Self {
-            Self { out: String::new() }
-        }
-    }
-    impl Renderer for TestRenderer {
-        fn clear(&mut self) {}
-        fn flush(&mut self) {}
-        fn render_str(&mut self, _pos: Pos, text: &str) {
-            self.out += text;
-        }
-        fn render_fmt_str(&mut self, _pos: Pos, text: &str, _style: Style) {
-            self.out += text;
-        }
-    }
 
     #[test]
     fn spinner_state_update_test() {
@@ -774,55 +319,5 @@ mod tests {
         let mut renderer = TestRenderer::new();
         view.draw(&mut renderer);
         assert_eq!(renderer.out, "[+]0 (-) - ");
-    }
-
-    #[test]
-    fn button_test() {
-        let mut btn = button("BTN", 42);
-
-        // Unless it's focused, it doesn't produce messages
-        let btn_view = btn.view(Pos { r: 0, c: 0 });
-        assert!(btn_view.on_event(interaction::Event::Activate).is_empty());
-
-        let mut renderer = TestRenderer::new();
-        btn_view.draw(&mut renderer);
-        assert_eq!(renderer.out, " BTN ");
-
-        // When focused, it can be activated
-        btn.focus();
-        let btn_view = btn.view(Pos { r: 0, c: 0 });
-        let msg = btn_view.on_event(interaction::Event::Activate);
-        assert_eq!(msg.len(), 1);
-        assert_eq!(msg[0], 42);
-
-        // Focused, it should also indicate that
-        let mut renderer = TestRenderer::new();
-        btn_view.draw(&mut renderer);
-        assert_eq!(renderer.out, "[BTN]");
-    }
-
-    #[test]
-    fn label_test() {
-        let lbl = label(Pos { r: 0, c: 0 }, "LBL");
-
-        let mut renderer = TestRenderer::new();
-        lbl.draw(&mut renderer);
-        assert_eq!(renderer.out, "LBL");
-
-        // Can't activate a label
-        let msg = lbl.on_event(interaction::Event::Activate);
-        assert!(msg.is_empty());
-    }
-
-    #[test]
-    fn focus_helper_test() {
-        fn focus_helper(mut f: Vec<&mut dyn Focusable>) {
-            f[0].focus();
-        }
-
-        let mut b1 = button("BTN", 0);
-        let mut b2 = button("BTN", 0);
-
-        focus_helper(vec![&mut b1, &mut b2]);
     }
 }
