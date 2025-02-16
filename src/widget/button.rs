@@ -12,8 +12,10 @@ pub struct Button<Message> {
     pub has_focus: bool,
 }
 
-impl<Message: Copy> Widget<Message, ButtonView<Message>> for Button<Message> {
-    fn update(&mut self, _msg: Message) {}
+impl<Message: Copy> Widget<Message, (), ButtonView<Message>> for Button<Message> {
+    fn update(&mut self, _msg: Message) -> Vec<()> {
+        vec![]
+    }
     fn view(&self, pos: Pos) -> ButtonView<Message> {
         ButtonView::<Message> {
             text: self.text.clone(),

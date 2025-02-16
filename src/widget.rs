@@ -8,8 +8,8 @@ pub mod textbox;
 
 /// A Widget is statefull and has the update() mechanism to mutate it's state.
 /// It create views that are entirely disconnected from itself (no back ref with a lifetime).
-pub trait Widget<Message, V: View<Message>>: Focusable {
-    fn update(&mut self, msg: Message);
+pub trait Widget<Message, Task, V: View<Message>>: Focusable {
+    fn update(&mut self, msg: Message) -> Vec<Task>;
     fn view(&self, pos: Pos) -> V;
 }
 

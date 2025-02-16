@@ -28,13 +28,13 @@ impl TextBox {
             has_focus: false,
         }
     }
-    pub fn _text(&self) -> &str {
+    pub fn text(&self) -> &str {
         &self.text
     }
 }
 
-impl Widget<Message, TextBoxView> for TextBox {
-    fn update(&mut self, msg: Message) {
+impl Widget<Message, (), TextBoxView> for TextBox {
+    fn update(&mut self, msg: Message) -> Vec<()> {
         match msg {
             Message::EnterChar(c) => {
                 self.text
@@ -66,6 +66,8 @@ impl Widget<Message, TextBoxView> for TextBox {
                 }
             }
         }
+
+        vec![]
     }
     fn view(&self, pos: Pos) -> TextBoxView {
         TextBoxView::new(pos, self.carret_idx, &self.text, self.has_focus)
