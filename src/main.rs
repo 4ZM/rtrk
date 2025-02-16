@@ -293,6 +293,13 @@ mod voice_list {
                 list_window_len,
             }
         }
+
+        fn set_voice_focus(&mut self, idx: usize) {
+            self.focus_chain.clear();
+            self.focus_chain
+                .push(self.voices[idx].clone() as FocusableRc);
+            self.focus_chain.next_focus();
+        }
     }
 
     impl Widget<Message, VoiceListView> for VoiceList {
@@ -304,24 +311,16 @@ mod voice_list {
                         self.first_voice_idx -= 1;
                     }
                     self.selected_voice_idx -= 1;
-
-                    self.focus_chain.clear();
-                    self.focus_chain
-                        .push(self.voices[*self.selected_voice_idx].clone() as FocusableRc);
-                    self.focus_chain.next_focus();
+                    self.set_voice_focus(*self.selected_voice_idx);
                 }
                 Message::Down => {
-                    if *self.selected_voice_idx
-                        == *(self.first_voice_idx + self.list_window_len - 1)
-                    {
+                    let last_voice_idx = *(self.first_voice_idx + self.list_window_len - 1);
+                    if *self.selected_voice_idx == last_voice_idx {
                         self.first_voice_idx += 1;
                     }
 
                     self.selected_voice_idx += 1;
-                    self.focus_chain.clear();
-                    self.focus_chain
-                        .push(self.voices[*self.selected_voice_idx].clone() as FocusableRc);
-                    self.focus_chain.next_focus();
+                    self.set_voice_focus(*self.selected_voice_idx);
                 }
                 Message::Voice(idx, vm) => self.voices[idx].borrow_mut().update(vm),
             };
