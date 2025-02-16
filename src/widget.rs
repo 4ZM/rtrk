@@ -32,4 +32,5 @@ pub trait Focusable {
 
     /// Advance focus recursively
     fn next_focus(&mut self);
+    fn prev_focus(&mut self);
 }

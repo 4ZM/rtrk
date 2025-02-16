@@ -20,6 +20,9 @@ macro_rules! impl_focusable_with_focuschain {
             fn next_focus(&mut self) {
                 self.$inner_field.next_focus();
             }
+            fn prev_focus(&mut self) {
+                self.$inner_field.prev_focus();
+            }
         }
     };
 }
@@ -69,6 +72,35 @@ impl super::Focusable for FocusChain {
                         // Start traversing next subtree
                         self.focusables[idx + 1].borrow_mut().next_focus();
                         Some(idx + 1)
+                    }
+                }
+            }
+        };
+    }
+    fn prev_focus(&mut self) {
+        self.focus_idx = match self.focus_idx {
+            None => {
+                // Start a new focus cycle
+                let last_idx = self.focusables.len() - 1;
+                self.focusables[last_idx].borrow_mut().prev_focus();
+                Some(last_idx)
+            }
+            Some(idx) => {
+                // Advance the child tree
+                self.focusables[idx].borrow_mut().prev_focus();
+
+                // Still same child tree that has focus?
+                if self.focusables[idx].borrow().has_focus() {
+                    Some(idx)
+                } else {
+                    // Child tree lost focus
+                    if idx == 0 {
+                        // Last subtree lost focus, nothing left
+                        None
+                    } else {
+                        // Start traversing next subtree
+                        self.focusables[idx - 1].borrow_mut().prev_focus();
+                        Some(idx - 1)
                     }
                 }
             }

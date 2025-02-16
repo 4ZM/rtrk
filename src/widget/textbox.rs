@@ -75,14 +75,17 @@ impl Focusable for TextBox {
     fn has_focus(&self) -> bool {
         self.has_focus
     }
-    fn next_focus(&mut self) {
-        self.has_focus = !self.has_focus;
-    }
     fn focus(&mut self) {
         self.has_focus = true
     }
     fn defocus(&mut self) {
         self.has_focus = false
+    }
+    fn next_focus(&mut self) {
+        self.has_focus = !self.has_focus;
+    }
+    fn prev_focus(&mut self) {
+        self.has_focus = !self.has_focus;
     }
 }
 

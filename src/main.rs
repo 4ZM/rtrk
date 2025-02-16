@@ -46,6 +46,7 @@ mod app {
         Stop,
         Rewind,
         NextFocus,
+        PrevFocus,
         VoiceList(voice_list::Message),
     }
 
@@ -88,6 +89,7 @@ mod app {
                 Message::Stop => {}
                 Message::Play => {}
                 Message::NextFocus => self.next_focus(),
+                Message::PrevFocus => self.prev_focus(),
             };
         }
 
@@ -120,8 +122,10 @@ mod app {
         }
 
         fn on_event(&self, e: Event) -> Vec<Message> {
-            if let Event::NextFocus = e {
-                return vec![Message::NextFocus];
+            match e {
+                Event::NextFocus => return vec![Message::NextFocus],
+                Event::PrevFocus => return vec![Message::PrevFocus],
+                _ => {}
             }
 
             let mut msgs: Vec<Message> = vec![];
@@ -156,6 +160,7 @@ mod voice {
     #[derive(Copy, Clone, Debug, PartialEq)]
     pub enum Message {
         NextFocus,
+        PrevFocus,
         Osc(textbox::Message),
         Env(textbox::Message),
         Flt(textbox::Message),
@@ -192,6 +197,7 @@ mod voice {
         fn update(&mut self, msg: Message) {
             match msg {
                 Message::NextFocus => self.next_focus(),
+                Message::PrevFocus => self.prev_focus(),
                 Message::Osc(m) => self.osc_txt.borrow_mut().update(m),
                 Message::Env(m) => self.env_txt.borrow_mut().update(m),
                 Message::Flt(m) => self.flt_txt.borrow_mut().update(m),
@@ -220,9 +226,12 @@ mod voice {
             self.flt_txt.draw(renderer);
         }
         fn on_event(&self, e: Event) -> Vec<Message> {
-            if let Event::NextFocus = e {
-                return vec![Message::NextFocus];
+            match e {
+                Event::NextFocus => return vec![Message::NextFocus],
+                Event::PrevFocus => return vec![Message::PrevFocus],
+                _ => {}
             }
+
             let mut msgs: Vec<Message> = vec![];
             self.osc_txt
                 .on_event(e)
@@ -264,6 +273,7 @@ mod voice_list {
     #[derive(Copy, Clone, Debug, PartialEq)]
     pub enum Message {
         NextFocus,
+        PrevFocus,
         Up,
         Down,
         Voice(usize, voice::Message),
@@ -306,6 +316,7 @@ mod voice_list {
         fn update(&mut self, msg: Message) {
             match msg {
                 Message::NextFocus => self.next_focus(),
+                Message::PrevFocus => self.prev_focus(),
                 Message::Up => {
                     if *self.selected_voice_idx == *self.first_voice_idx {
                         self.first_voice_idx -= 1;
@@ -384,13 +395,13 @@ mod voice_list {
             self.voices.iter().for_each(|v| v.draw(renderer));
         }
         fn on_event(&self, e: Event) -> Vec<Message> {
-            if let Event::NextFocus = e {
-                return vec![Message::NextFocus];
+            match e {
+                Event::NextFocus => return vec![Message::NextFocus],
+                Event::PrevFocus => return vec![Message::PrevFocus],
+                _ if !self.has_focus => return vec![],
+                _ => {}
             }
 
-            if !self.has_focus {
-                return vec![];
-            }
             match e {
                 Event::Up => return vec![Message::Up],
                 Event::Down => return vec![Message::Down],
