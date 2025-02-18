@@ -1,8 +1,8 @@
 // Crossterm adapter for the interactions
-use crate::interaction::EventCollector;
-use crate::interaction::Renderer;
-use crate::interaction::Style;
-use crate::pos::Pos;
+use crate::uifw::interaction::EventCollector;
+use crate::uifw::interaction::Renderer;
+use crate::uifw::interaction::Style;
+use crate::uifw::pos::Pos;
 use crossterm::event::KeyEventKind;
 use crossterm::style::ResetColor;
 use std::io;
@@ -93,7 +93,7 @@ impl<W: io::Write> Renderer for CrosstermRenderer<W> {
 
 pub struct CrosstermEventCollector {}
 impl EventCollector for CrosstermEventCollector {
-    fn poll_events(&self) -> Vec<crate::interaction::Event> {
+    fn poll_events(&self) -> Vec<crate::uifw::interaction::Event> {
         if !event::poll(Duration::from_secs(0)).unwrap() {
             // TODO handle error
             return vec![];
@@ -105,67 +105,67 @@ impl EventCollector for CrosstermEventCollector {
                 kind: KeyEventKind::Press,
                 modifiers: _,
                 state: _,
-            })) => return vec![crate::interaction::Event::Quit],
+            })) => return vec![crate::uifw::interaction::Event::Quit],
             Ok(crossterm::event::Event::Key(KeyEvent {
                 code: KeyCode::Tab,
                 kind: KeyEventKind::Press,
                 modifiers: _,
                 state: _,
-            })) => return vec![crate::interaction::Event::NextFocus],
+            })) => return vec![crate::uifw::interaction::Event::NextFocus],
             Ok(crossterm::event::Event::Key(KeyEvent {
                 code: KeyCode::BackTab,
                 kind: KeyEventKind::Press,
                 modifiers: _,
                 state: _,
-            })) => return vec![crate::interaction::Event::PrevFocus],
+            })) => return vec![crate::uifw::interaction::Event::PrevFocus],
             Ok(crossterm::event::Event::Key(KeyEvent {
                 code: KeyCode::Enter,
                 kind: KeyEventKind::Press,
                 modifiers: _,
                 state: _,
-            })) => return vec![crate::interaction::Event::Activate],
+            })) => return vec![crate::uifw::interaction::Event::Activate],
             Ok(crossterm::event::Event::Key(KeyEvent {
                 code: KeyCode::Delete,
                 kind: KeyEventKind::Press,
                 modifiers: _,
                 state: _,
-            })) => return vec![crate::interaction::Event::Del],
+            })) => return vec![crate::uifw::interaction::Event::Del],
             Ok(crossterm::event::Event::Key(KeyEvent {
                 code: KeyCode::Backspace,
                 kind: KeyEventKind::Press,
                 modifiers: _,
                 state: _,
-            })) => return vec![crate::interaction::Event::DelBack],
+            })) => return vec![crate::uifw::interaction::Event::DelBack],
             Ok(crossterm::event::Event::Key(KeyEvent {
                 code: KeyCode::Left,
                 kind: KeyEventKind::Press,
                 modifiers: _,
                 state: _,
-            })) => return vec![crate::interaction::Event::Left],
+            })) => return vec![crate::uifw::interaction::Event::Left],
             Ok(crossterm::event::Event::Key(KeyEvent {
                 code: KeyCode::Right,
                 kind: KeyEventKind::Press,
                 modifiers: _,
                 state: _,
-            })) => return vec![crate::interaction::Event::Right],
+            })) => return vec![crate::uifw::interaction::Event::Right],
             Ok(crossterm::event::Event::Key(KeyEvent {
                 code: KeyCode::Up,
                 kind: KeyEventKind::Press,
                 modifiers: _,
                 state: _,
-            })) => return vec![crate::interaction::Event::Up],
+            })) => return vec![crate::uifw::interaction::Event::Up],
             Ok(crossterm::event::Event::Key(KeyEvent {
                 code: KeyCode::Down,
                 kind: KeyEventKind::Press,
                 modifiers: _,
                 state: _,
-            })) => return vec![crate::interaction::Event::Down],
+            })) => return vec![crate::uifw::interaction::Event::Down],
             Ok(crossterm::event::Event::Key(KeyEvent {
                 code: KeyCode::Char(c),
                 kind: KeyEventKind::Press,
                 modifiers: _,
                 state: _,
-            })) => return vec![crate::interaction::Event::Char(c)],
+            })) => return vec![crate::uifw::interaction::Event::Char(c)],
             _ => vec![],
         }
     }

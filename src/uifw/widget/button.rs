@@ -1,10 +1,10 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::interaction::Event;
-use crate::interaction::Renderer;
-use crate::pos::Pos;
-use crate::widget::{Focusable, View, Widget};
+use crate::uifw::interaction::Event;
+use crate::uifw::interaction::Renderer;
+use crate::uifw::pos::Pos;
+use crate::uifw::widget::{Focusable, View, Widget};
 
 pub struct Button<Message> {
     text: String,
@@ -84,7 +84,7 @@ pub fn button_rc<Message>(text: &str, on_press: Message) -> ButtonRc<Message> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::interaction::{tests::TestRenderer, Event};
+    use crate::uifw::interaction::{tests::TestRenderer, Event};
 
     #[test]
     fn button_test() {

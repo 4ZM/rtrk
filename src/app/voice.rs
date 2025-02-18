@@ -2,14 +2,14 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::impl_focusable_with_focuschain;
-use crate::interaction::Event;
-use crate::synthmodel;
+use crate::synth;
+use crate::uifw::interaction::Event;
 
-use crate::pos::Pos;
-use crate::widget::focus::{FocusChain, FocusableRc};
-use crate::widget::textbox;
-use crate::widget::textbox::{textbox_rc, TextBoxRc, TextBoxView};
-use crate::widget::{Focusable, View, Widget};
+use crate::uifw::pos::Pos;
+use crate::uifw::widget::focus::{FocusChain, FocusableRc};
+use crate::uifw::widget::textbox;
+use crate::uifw::widget::textbox::{textbox_rc, TextBoxRc, TextBoxView};
+use crate::uifw::widget::{Focusable, View, Widget};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Message {
@@ -46,20 +46,20 @@ impl Voice {
         }
     }
 
-    pub fn get_voice(&self) -> Option<synthmodel::Voice> {
+    pub fn get_voice(&self) -> Option<synth::Voice> {
         let osc = self.osc_txt.borrow().text().parse::<usize>();
         let osc = match osc {
-            Ok(0) => synthmodel::Oscilator::Sine,
-            Ok(1) => synthmodel::Oscilator::Saw,
-            Ok(2) => synthmodel::Oscilator::Square,
+            Ok(0) => synth::Oscilator::Sine,
+            Ok(1) => synth::Oscilator::Saw,
+            Ok(2) => synth::Oscilator::Square,
             _ => return None,
         };
 
         // Populate rest of voice data
 
-        Some(synthmodel::Voice {
+        Some(synth::Voice {
             osc,
-            env: synthmodel::Envelope::new(),
+            env: synth::Envelope::new(),
             lp: None,
             hp: None,
         })
@@ -100,7 +100,7 @@ pub struct VoiceView {
     flt_txt: TextBoxView,
 }
 impl View<Message> for VoiceView {
-    fn draw(&self, renderer: &mut dyn crate::interaction::Renderer) {
+    fn draw(&self, renderer: &mut dyn crate::uifw::interaction::Renderer) {
         self.osc_txt.draw(renderer);
         self.env_txt.draw(renderer);
         self.flt_txt.draw(renderer);
@@ -139,16 +139,15 @@ pub mod list {
     use std::cell::RefCell;
     use std::rc::Rc;
 
+    use crate::app::voice::{voice_rc, VoiceRc, VoiceView};
     use crate::cycle::Cycle;
-    use crate::interaction::Event;
-    use crate::pos::Pos;
-    use crate::synthmodel;
-    use crate::voice::voice_rc;
-    use crate::voice::{VoiceRc, VoiceView};
-    use crate::widget::focus::{FocusChain, FocusableRc};
-    use crate::widget::label::{label, Label};
-    use crate::widget::{Focusable, View, Widget};
-    use crate::{impl_focusable_with_focuschain, voice};
+    use crate::synth;
+    use crate::uifw::interaction::Event;
+    use crate::uifw::pos::Pos;
+    use crate::uifw::widget::focus::{FocusChain, FocusableRc};
+    use crate::uifw::widget::label::{label, Label};
+    use crate::uifw::widget::{Focusable, View, Widget};
+    use crate::{app::voice, impl_focusable_with_focuschain};
 
     #[derive(Copy, Clone, Debug, PartialEq)]
     pub enum Message {
@@ -191,7 +190,7 @@ pub mod list {
             self.focus_chain.next_focus();
         }
 
-        pub fn get_selected_voice(&self) -> Option<synthmodel::Voice> {
+        pub fn get_selected_voice(&self) -> Option<synth::Voice> {
             self.voices[*self.selected_voice_idx].borrow().get_voice()
         }
     }
@@ -277,7 +276,7 @@ pub mod list {
         }
     }
     impl View<Message> for VoiceListView {
-        fn draw(&self, renderer: &mut dyn crate::interaction::Renderer) {
+        fn draw(&self, renderer: &mut dyn crate::uifw::interaction::Renderer) {
             self.idx_labels.iter().for_each(|v| v.draw(renderer));
             self.voices.iter().for_each(|v| v.draw(renderer));
         }

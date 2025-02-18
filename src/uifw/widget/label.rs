@@ -1,5 +1,5 @@
-use crate::pos::Pos;
-use crate::widget::View;
+use crate::uifw::pos::Pos;
+use crate::uifw::widget::View;
 
 pub struct Label {
     pos: Pos,
@@ -7,7 +7,7 @@ pub struct Label {
 }
 
 impl View<()> for Label {
-    fn draw(&self, renderer: &mut dyn crate::interaction::Renderer) {
+    fn draw(&self, renderer: &mut dyn crate::uifw::interaction::Renderer) {
         renderer.render_str(self.pos, &format!("{}", &self.text));
     }
 }
@@ -21,7 +21,7 @@ pub fn label(pos: Pos, text: &str) -> Label {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::interaction::{tests::TestRenderer, Event};
+    use crate::uifw::interaction::{tests::TestRenderer, Event};
 
     #[test]
     fn label_test() {

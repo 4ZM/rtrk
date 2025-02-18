@@ -1,9 +1,14 @@
-use crate::interaction::{Event, EventCollector, Renderer};
-use crate::pos::Pos;
-use crate::widget::{View, Widget};
-use crate::{app, term};
+pub mod interaction;
+pub mod pos;
+mod term;
+pub mod widget;
+
+use crate::app;
+use interaction::{EventCollector, Renderer};
+use pos::Pos;
 use std::collections::VecDeque;
 use std::time::Duration;
+use widget::{View, Widget};
 
 // Runtime - TODO Generalize on task
 pub fn start<Message, V: View<Message>>(app: &mut dyn Widget<Message, app::Task, V>) {
@@ -36,8 +41,7 @@ pub fn start<Message, V: View<Message>>(app: &mut dyn Widget<Message, app::Task,
         for t in tasks.iter() {
             match t {
                 app::Task::Quit => break 'app,
-                app::Task::PlayVoice(v) => {}
-                _ => {}
+                app::Task::PlayVoice(_v) => {}
             }
         }
     }

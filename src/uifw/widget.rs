@@ -1,5 +1,5 @@
-use crate::interaction::{Event, Renderer};
-use crate::pos::Pos;
+use crate::uifw::interaction::{Event, Renderer};
+use crate::uifw::pos::Pos;
 
 pub mod button;
 pub mod focus;

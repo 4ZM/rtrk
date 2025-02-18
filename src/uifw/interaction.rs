@@ -1,6 +1,6 @@
 /// The abstract interraction interface between the Application and the UI framework.
 /// Different UI frameworks can implement this (e.g. terminal, web, etc).
-use crate::pos::Pos;
+use crate::uifw::pos::Pos;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Event {
@@ -32,7 +32,7 @@ pub trait Renderer {
 }
 
 pub trait EventCollector {
-    fn poll_events(&self) -> Vec<crate::interaction::Event>;
+    fn poll_events(&self) -> Vec<Event>;
 }
 
 #[cfg(test)]

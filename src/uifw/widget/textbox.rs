@@ -1,6 +1,6 @@
-use crate::interaction::{Event, Renderer, Style};
-use crate::pos::Pos;
-use crate::widget::{Focusable, View, Widget};
+use crate::uifw::interaction::{Event, Renderer, Style};
+use crate::uifw::pos::Pos;
+use crate::uifw::widget::{Focusable, View, Widget};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -170,7 +170,7 @@ pub fn textbox_rc(width: usize) -> TextBoxRc {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::interaction::{tests::TestRenderer, Event};
+    use crate::uifw::interaction::tests::TestRenderer;
 
     #[test]
     fn textbox_test() {
