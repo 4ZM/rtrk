@@ -59,7 +59,7 @@ impl Voice {
 
         Some(synth::Voice {
             osc,
-            env: synth::Envelope::new(),
+            env: None,
             lp: None,
             hp: None,
         })
