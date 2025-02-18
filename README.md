@@ -39,3 +39,7 @@ Each track has this format:
 
 Note (freq)   Sound    Vol    Effect[Code Parameter]
 C#4           1        A0     1           01
+
+## License
+
+This project is licensed under the GNU General Public License v3.0. See the `LICENSE` file for more details.

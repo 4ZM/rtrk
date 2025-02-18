@@ -2,6 +2,8 @@
 name = "rtrk"
 version = "0.1.0"
 edition = "2021"
+authors = ["Anders Sundman <anders@4zm.org>"]
+license = "GPL-3.0"
 
 [dependencies]
 crossterm = "0.28.1"
