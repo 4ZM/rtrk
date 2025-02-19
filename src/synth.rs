@@ -72,7 +72,7 @@ pub struct Voice {
     pub hp: Option<Filter>,
 }
 
-use rodio::{OutputStream, Sink, Source};
+use rodio::{OutputStream, OutputStreamHandle, Sink, Source};
 use std::time::Duration;
 
 const SAMPLE_RATE: u32 = 44100;
@@ -80,8 +80,11 @@ const SAMPLE_RATE: u32 = 44100;
 mod math;
 mod wave_tables;
 
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Frequency(pub f32);
 pub struct Note;
+
+#[allow(dead_code)]
 impl Note {
     pub const C: Frequency = Frequency(261.63);
     pub const CS: Frequency = Frequency(277.18);
@@ -164,19 +167,73 @@ impl Source for WaveTableOscillator {
     }
 }
 
-enum AsyncSynthMsg {
-    Play(Voice, f32),
-    StopPlayback,
+use std::sync::mpsc::{self, SendError};
+use std::thread;
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+enum Message {
+    Play(Voice, usize, Frequency),
+    Terminate,
 }
 struct AsyncSynth {
-    synth: Synth,
+    thread: Option<thread::JoinHandle<()>>,
+    tx: mpsc::Sender<Message>,
 }
-impl AsyncSynth {}
+impl AsyncSynth {
+    fn new() -> Self {
+        let (tx, rx) = mpsc::channel();
+        let thread = Some(thread::spawn(move || {
+            let mut synth = Synth::new();
 
-pub struct Synth {}
+            loop {
+                let message = rx.recv();
+
+                match message {
+                    Ok(Message::Play(voice, channel, freq)) => {
+                        synth.play(channel, &voice, freq, 1.0)
+                    }
+                    Ok(Message::Terminate) => break,
+                    Err(_) => break,
+                }
+            }
+        }));
+
+        Self { thread, tx }
+    }
+    pub fn send(&mut self, msg: Message) -> Result<(), SendError<Message>> {
+        self.tx.send(msg)
+    }
+
+    pub fn drop(&mut self) {
+        let _ = self.send(Message::Terminate); // OK if this fails if thread already finished
+        self.thread
+            .take()
+            .unwrap()
+            .join()
+            .expect("Synth thread panic!");
+    }
+}
+
+pub struct Synth {
+    stream: OutputStream, // Keep stream alive, can't use just the handle
+    stream_handle: OutputStreamHandle,
+    channels: Vec<Sink>,
+}
 
 impl Synth {
-    pub fn play(&self, voice: &Voice, freq_hz: Frequency, _duration_ms: f32) {
+    pub fn new() -> Self {
+        let (stream, stream_handle) =
+            OutputStream::try_default().expect("Could not use default audio device.");
+        let channels = (0..4)
+            .map(|_| Sink::try_new(&stream_handle).expect("Could not create audio sink"))
+            .collect();
+        Self {
+            stream,
+            stream_handle,
+            channels,
+        }
+    }
+    pub fn play(&mut self, channel: usize, voice: &Voice, freq_hz: Frequency, _duration_ms: f32) {
         let mut osc = match voice.osc {
             Oscilator::Sine => WaveTableOscillator::new(wave_tables::sine(32), math::lerp, 1.0),
             Oscilator::Triangle => {
@@ -190,10 +247,21 @@ impl Synth {
         };
         osc.set_frequency(freq_hz);
 
-        let (_stream, stream_handle) = OutputStream::try_default().unwrap();
-        let sink = Sink::try_new(&stream_handle).unwrap();
-        sink.append(osc);
-        sink.sleep_until_end();
+        self.channels[channel].clear();
+        self.channels[channel].append(osc);
+        self.channels[channel].play();
+    }
+
+    pub fn wait(&self) {
+        for channel in self.channels.iter() {
+            channel.sleep_until_end();
+        }
+    }
+
+    pub fn drop(&mut self) {
+        for channel in self.channels.iter() {
+            channel.clear();
+        }
     }
 }
 
@@ -204,17 +272,37 @@ mod tests {
     use std::thread;
 
     // #[test]
-    // fn test_voice() {
+    // fn async_synth_test() {
     //     let voice = Voice {
     //         osc: Oscilator::Triangle,
     //         env: None,
     //         lp: None,
     //         hp: None,
     //     };
-    //     let synth = Synth {};
+    //     let mut synth = AsyncSynth::new();
+
+    //     synth.send(Message::Play(voice, 0, Note::A)).expect("");
+    //     synth.send(Message::Play(voice, 2, Note::C)).expect("");
+
+    //     thread::sleep(Duration::from_secs(1));
+
+    //     synth.send(Message::Terminate).expect("");
+    //     synth.drop();
+    // }
+
+    // #[test]
+    // fn polyphony_test() {
+    //     let voice = Voice {
+    //         osc: Oscilator::Triangle,
+    //         env: None,
+    //         lp: None,
+    //         hp: None,
+    //     };
+    //     let mut synth = Synth::new();
 
     //     let duration_sec = 1.0;
-    //     synth.play(&voice, Note::A, duration_sec);
-    //     thread::sleep(Duration::from_millis(duration_sec as u64 * 1000));
+    //     synth.play(0, &voice, Note::A, duration_sec);
+    //     synth.play(1, &voice, Note::C, duration_sec);
+    //     synth.wait();
     // }
 }
