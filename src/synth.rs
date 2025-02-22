@@ -15,6 +15,8 @@
 // You should have received a copy of the GNU General Public License
 // along with RTRK. If not, see <https://www.gnu.org/licenses/>.
 
+mod rodio;
+
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Oscilator {
     Sine,
@@ -72,9 +74,6 @@ pub struct Voice {
     pub hp: Option<Filter>,
 }
 
-use rodio::{OutputStream, OutputStreamHandle, Sink, Source};
-use std::time::Duration;
-
 const SAMPLE_RATE: u32 = 44100;
 
 mod math;
@@ -100,7 +99,7 @@ impl Note {
     pub const B: Frequency = Frequency(493.88);
 }
 
-struct WaveTableOscillator {
+pub struct WaveTableOscillator {
     wave_table: Vec<f32>,
     index: f32,
     index_increment: f32,
@@ -149,24 +148,6 @@ impl Iterator for WaveTableOscillator {
     }
 }
 
-impl Source for WaveTableOscillator {
-    fn channels(&self) -> u16 {
-        1
-    }
-
-    fn sample_rate(&self) -> u32 {
-        SAMPLE_RATE
-    }
-
-    fn current_frame_len(&self) -> Option<usize> {
-        None
-    }
-
-    fn total_duration(&self) -> Option<Duration> {
-        None
-    }
-}
-
 use std::sync::mpsc::{self, SendError};
 use std::thread;
 
@@ -175,15 +156,28 @@ enum Message {
     Play(Voice, usize, Frequency),
     Terminate,
 }
+
+fn sink_factory() -> impl AudioSink<Iter = WaveTableOscillator> {
+    crate::synth::rodio::RodioAudioSink::new(4)
+}
+
 struct AsyncSynth {
     thread: Option<thread::JoinHandle<()>>,
     tx: mpsc::Sender<Message>,
 }
 impl AsyncSynth {
-    fn new() -> Self {
+    // Use a factory instead of passing the RodioSource directly since it doesn't impl Send
+    pub fn new<S, F>(sink_factory: F, channels: usize) -> Self
+    where
+        F: Fn() -> S + Send + 'static,
+        S: AudioSink<Iter = WaveTableOscillator>,
+    {
         let (tx, rx) = mpsc::channel();
+
         let thread = Some(thread::spawn(move || {
-            let mut synth = Synth::new();
+            let sink = sink_factory();
+
+            let mut synth = Synth::new(sink, channels);
 
             loop {
                 let message = rx.recv();
@@ -214,24 +208,21 @@ impl AsyncSynth {
     }
 }
 
-pub struct Synth {
-    stream: OutputStream, // Keep stream alive, can't use just the handle
-    stream_handle: OutputStreamHandle,
-    channels: Vec<Sink>,
+pub trait AudioSink {
+    type Iter: Iterator<Item = f32>;
+    fn play(&mut self, channel: usize, data: Self::Iter);
+    fn stop(&mut self, channel: usize);
+    fn wait(&mut self, channel: usize);
 }
 
-impl Synth {
-    pub fn new() -> Self {
-        let (stream, stream_handle) =
-            OutputStream::try_default().expect("Could not use default audio device.");
-        let channels = (0..4)
-            .map(|_| Sink::try_new(&stream_handle).expect("Could not create audio sink"))
-            .collect();
-        Self {
-            stream,
-            stream_handle,
-            channels,
-        }
+pub struct Synth<S: AudioSink<Iter = WaveTableOscillator>> {
+    sink: S,
+    channels: usize,
+}
+
+impl<S: AudioSink<Iter = WaveTableOscillator>> Synth<S> {
+    pub fn new(sink: S, channels: usize) -> Self {
+        Self { sink, channels }
     }
     pub fn play(&mut self, channel: usize, voice: &Voice, freq_hz: Frequency, _duration_ms: f32) {
         let mut osc = match voice.osc {
@@ -247,20 +238,18 @@ impl Synth {
         };
         osc.set_frequency(freq_hz);
 
-        self.channels[channel].clear();
-        self.channels[channel].append(osc);
-        self.channels[channel].play();
+        self.sink.play(channel, osc);
     }
 
-    pub fn wait(&self) {
-        for channel in self.channels.iter() {
-            channel.sleep_until_end();
+    pub fn wait_all(&mut self) {
+        for channel in 0..self.channels {
+            self.sink.wait(channel);
         }
     }
 
     pub fn drop(&mut self) {
-        for channel in self.channels.iter() {
-            channel.clear();
+        for channel in 0..self.channels {
+            self.sink.stop(channel);
         }
     }
 }
@@ -268,41 +257,56 @@ impl Synth {
 #[cfg(test)]
 mod tests {
 
+    struct AudioSinkDummy {}
+    impl AudioSink for AudioSinkDummy {
+        type Iter = WaveTableOscillator;
+        fn play(&mut self, _channel: usize, _data: Self::Iter) {}
+        fn stop(&mut self, _channel: usize) {}
+        fn wait(&mut self, _channel: usize) {}
+    }
+
     use super::*;
+    //use crate::synth::rodio::RodioAudioSink;
     use std::thread;
+    use std::time::Duration;
 
-    // #[test]
-    // fn async_synth_test() {
-    //     let voice = Voice {
-    //         osc: Oscilator::Triangle,
-    //         env: None,
-    //         lp: None,
-    //         hp: None,
-    //     };
-    //     let mut synth = AsyncSynth::new();
+    #[test]
+    fn async_synth_test() {
+        let voice = Voice {
+            osc: Oscilator::Triangle,
+            env: None,
+            lp: None,
+            hp: None,
+        };
 
-    //     synth.send(Message::Play(voice, 0, Note::A)).expect("");
-    //     synth.send(Message::Play(voice, 2, Note::C)).expect("");
+        //let mut synth = AsyncSynth::new(|| RodioAudioSink::new(4), 4);
+        let mut synth = AsyncSynth::new(|| AudioSinkDummy {}, 4);
 
-    //     thread::sleep(Duration::from_secs(1));
+        synth.send(Message::Play(voice, 0, Note::A)).expect("");
+        synth.send(Message::Play(voice, 2, Note::C)).expect("");
 
-    //     synth.send(Message::Terminate).expect("");
-    //     synth.drop();
-    // }
+        thread::sleep(Duration::from_millis(100));
 
-    // #[test]
-    // fn polyphony_test() {
-    //     let voice = Voice {
-    //         osc: Oscilator::Triangle,
-    //         env: None,
-    //         lp: None,
-    //         hp: None,
-    //     };
-    //     let mut synth = Synth::new();
+        synth.send(Message::Terminate).expect("");
+        synth.drop();
+    }
 
-    //     let duration_sec = 1.0;
-    //     synth.play(0, &voice, Note::A, duration_sec);
-    //     synth.play(1, &voice, Note::C, duration_sec);
-    //     synth.wait();
-    // }
+    #[test]
+    fn polyphony_test() {
+        let voice = Voice {
+            osc: Oscilator::Triangle,
+            env: None,
+            lp: None,
+            hp: None,
+        };
+
+        //let sink = RodioAudioSink::new(4);
+        let sink = AudioSinkDummy {};
+        let mut synth = Synth::new(sink, 4);
+
+        let duration_sec = 1.0;
+        synth.play(0, &voice, Note::A, duration_sec);
+        synth.play(1, &voice, Note::C, duration_sec);
+        synth.wait_all();
+    }
 }
