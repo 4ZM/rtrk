@@ -38,9 +38,9 @@ pub struct CrosstermRenderer<W: io::Write> {
 }
 impl<W: io::Write> CrosstermRenderer<W> {
     pub fn new(mut w: W) -> CrosstermRenderer<W> {
-        execute!(w.by_ref(), terminal::EnterAlternateScreen)
-            .expect("Unable to create CrosstermRenderer");
         terminal::enable_raw_mode().expect("Unable to create CrosstermRenderer");
+        execute!(w.by_ref(), terminal::EnterAlternateScreen,)
+            .expect("Unable to create CrosstermRenderer");
 
         CrosstermRenderer { w }
     }
@@ -51,7 +51,7 @@ impl<W: io::Write> Drop for CrosstermRenderer<W> {
             self.w,
             style::ResetColor,
             cursor::Show,
-            terminal::LeaveAlternateScreen
+            terminal::LeaveAlternateScreen,
         )
         .expect("Unable to drop CrosstermRenderer");
 

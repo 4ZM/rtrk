@@ -55,6 +55,7 @@ use voice::list::{voicelist_rc, VoiceListRc, VoiceListView};
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum AppTask {
     PlayVoice(synth::Voice),
+    StopVoice,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -88,11 +89,13 @@ impl AppTaskProcessor {
 }
 impl TaskProcessor<AppTask> for AppTaskProcessor {
     fn process(&mut self, task: &AppTask) {
+        let channel = 0;
         match task {
             AppTask::PlayVoice(v) => self
                 .synth
-                .send(synth::Message::Play(*v, 0, Note::A))
+                .send(synth::Message::Play(*v, channel, Note::A))
                 .expect(""),
+            AppTask::StopVoice => self.synth.send(synth::Message::Stop(channel)).expect(""),
         }
     }
 }

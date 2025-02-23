@@ -21,7 +21,7 @@ use std::thread;
 pub mod rodio;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum Oscilator {
+pub enum Oscillator {
     Sine,
     Triangle,
     Saw,
@@ -71,7 +71,7 @@ pub struct Filter {
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Voice {
-    pub osc: Oscilator,
+    pub osc: Oscillator,
     pub env: Option<Envelope>,
     pub lp: Option<Filter>,
     pub hp: Option<Filter>,
@@ -155,6 +155,7 @@ impl Iterator for WaveTableOscillator {
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Message {
     Play(Voice, usize, Frequency),
+    Stop(usize),
     Terminate,
 }
 
@@ -185,8 +186,9 @@ impl AsyncSynth {
 
                 match message {
                     Ok(Message::Play(voice, channel, freq)) => {
-                        synth.play(channel, &voice, freq, 1.0)
+                        synth.play(channel, &voice, freq, 2.0)
                     }
+                    Ok(Message::Stop(channel)) => synth.stop(channel),
                     Ok(Message::Terminate) => break,
                     Err(_) => break,
                 }
@@ -225,16 +227,22 @@ impl<S: AudioSink<Iter = WaveTableOscillator>> Synth<S> {
     pub fn new(sink: S, channels: usize) -> Self {
         Self { sink, channels }
     }
-    pub fn play(&mut self, channel: usize, voice: &Voice, freq_hz: Frequency, _duration_ms: f32) {
+    pub fn play(&mut self, channel: usize, voice: &Voice, freq_hz: Frequency, duration_s: f32) {
         let mut osc = match voice.osc {
-            Oscilator::Sine => WaveTableOscillator::new(wave_tables::sine(32), math::lerp, 1.0),
-            Oscilator::Triangle => {
-                WaveTableOscillator::new(wave_tables::triangle(), math::lerp, 1.0)
+            Oscillator::Sine => {
+                WaveTableOscillator::new(wave_tables::sine(32), math::lerp, duration_s)
             }
-            Oscilator::Saw => WaveTableOscillator::new(wave_tables::saw(32), math::lerp, 1.0),
-            Oscilator::Square => WaveTableOscillator::new(wave_tables::square(), math::step, 1.0),
-            Oscilator::Pulse => {
-                WaveTableOscillator::new(wave_tables::pulse(64, 0.1), math::step, 1.0)
+            Oscillator::Triangle => {
+                WaveTableOscillator::new(wave_tables::triangle(), math::lerp, duration_s)
+            }
+            Oscillator::Saw => {
+                WaveTableOscillator::new(wave_tables::saw(32), math::lerp, duration_s)
+            }
+            Oscillator::Square => {
+                WaveTableOscillator::new(wave_tables::square(), math::step, duration_s)
+            }
+            Oscillator::Pulse => {
+                WaveTableOscillator::new(wave_tables::pulse(64, 0.1), math::step, duration_s)
             }
         };
         osc.set_frequency(freq_hz);
@@ -242,6 +250,9 @@ impl<S: AudioSink<Iter = WaveTableOscillator>> Synth<S> {
         self.sink.play(channel, osc);
     }
 
+    pub fn stop(&mut self, channel: usize) {
+        self.sink.stop(channel);
+    }
     pub fn wait_all(&mut self) {
         for channel in 0..self.channels {
             self.sink.wait(channel);
@@ -274,7 +285,7 @@ mod tests {
     #[test]
     fn async_synth_test() {
         let voice = Voice {
-            osc: Oscilator::Triangle,
+            osc: Oscillator::Triangle,
             env: None,
             lp: None,
             hp: None,
@@ -295,7 +306,7 @@ mod tests {
     #[test]
     fn polyphony_test() {
         let voice = Voice {
-            osc: Oscilator::Triangle,
+            osc: Oscillator::Triangle,
             env: None,
             lp: None,
             hp: None,

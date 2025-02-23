@@ -34,6 +34,7 @@ pub enum Message {
     NextFocus,
     PrevFocus,
     Play,
+    Stop,
     Osc(textbox::Message),
     Env(textbox::Message),
     Flt(textbox::Message),
@@ -68,9 +69,11 @@ impl Voice {
     pub fn get_voice(&self) -> Option<synth::Voice> {
         let osc = self.osc_txt.borrow().text().parse::<usize>();
         let osc = match osc {
-            Ok(0) => synth::Oscilator::Sine,
-            Ok(1) => synth::Oscilator::Saw,
-            Ok(2) => synth::Oscilator::Square,
+            Ok(0) => synth::Oscillator::Sine,
+            Ok(1) => synth::Oscillator::Triangle,
+            Ok(2) => synth::Oscillator::Saw,
+            Ok(3) => synth::Oscillator::Square,
+            Ok(4) => synth::Oscillator::Pulse,
             _ => return None,
         };
 
@@ -104,6 +107,9 @@ impl Widget<Message, AppTask, VoiceView> for Voice {
                     return vec![Task::App(AppTask::PlayVoice(voice))];
                 }
             }
+            Message::Stop => {
+                return vec![Task::App(AppTask::StopVoice)];
+            }
         };
         vec![]
     }
@@ -113,6 +119,7 @@ impl Widget<Message, AppTask, VoiceView> for Voice {
             osc_txt: self.osc_txt.borrow().view(pos + Pos { r: 0, c: 0 }),
             env_txt: self.env_txt.borrow().view(pos + Pos { r: 0, c: 2 }),
             flt_txt: self.flt_txt.borrow().view(pos + Pos { r: 0, c: 11 }),
+            has_focus: self.has_focus(),
         }
     }
 }
@@ -122,6 +129,7 @@ pub struct VoiceView {
     osc_txt: TextBoxView,
     env_txt: TextBoxView,
     flt_txt: TextBoxView,
+    has_focus: bool,
 }
 impl View<Message> for VoiceView {
     fn draw(&self, renderer: &mut dyn crate::uifw::interaction::Renderer) {
@@ -130,10 +138,22 @@ impl View<Message> for VoiceView {
         self.flt_txt.draw(renderer);
     }
     fn on_event(&self, e: Event) -> Vec<Message> {
+        if !self.has_focus {
+            return vec![];
+        }
+
+        let mut e = e;
+        if let Event::Char(c @ 'a'..='z') = e {
+            e = Event::Char(c.to_ascii_uppercase());
+        }
+
         match e {
             Event::NextFocus => return vec![Message::NextFocus],
             Event::PrevFocus => return vec![Message::PrevFocus],
-            Event::Activate => return vec![Message::Play],
+            Event::Char('P') => return vec![Message::Play],
+            Event::Char('S') => return vec![Message::Stop],
+            Event::Char('0'..='9' | 'A'..='F' | ' ') => {}
+            Event::Char(_) => return vec![],
             _ => {}
         }
 
