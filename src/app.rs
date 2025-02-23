@@ -125,15 +125,11 @@ impl Widget<Message, AppTask, AppView> for App {
         match msg {
             Message::Quit => return vec![Task::Quit],
             Message::VoiceList(m) => {
-                self.voices.borrow_mut().update(m);
+                return self.voices.borrow_mut().update(m);
             }
             Message::Rewind => {}
             Message::Stop => {}
-            Message::Play => {
-                if let Some(voice) = self.voices.borrow().get_selected_voice() {
-                    return vec![Task::App(AppTask::PlayVoice(voice))];
-                }
-            }
+            Message::Play => {}
             Message::NextFocus => self.next_focus(),
             Message::PrevFocus => self.prev_focus(),
         };

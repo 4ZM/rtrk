@@ -22,6 +22,7 @@ use crate::impl_focusable_with_focuschain;
 use crate::synth;
 use crate::uifw::interaction::Event;
 
+use crate::app::AppTask;
 use crate::uifw::pos::Pos;
 use crate::uifw::widget::focus::{FocusChain, FocusableRc};
 use crate::uifw::widget::textbox;
@@ -32,6 +33,7 @@ use crate::uifw::widget::{Focusable, Task, View, Widget};
 pub enum Message {
     NextFocus,
     PrevFocus,
+    Play,
     Osc(textbox::Message),
     Env(textbox::Message),
     Flt(textbox::Message),
@@ -83,8 +85,8 @@ impl Voice {
     }
 }
 
-impl Widget<Message, (), VoiceView> for Voice {
-    fn update(&mut self, msg: Message) -> Vec<Task<()>> {
+impl Widget<Message, AppTask, VoiceView> for Voice {
+    fn update(&mut self, msg: Message) -> Vec<Task<AppTask>> {
         match msg {
             Message::NextFocus => self.next_focus(),
             Message::PrevFocus => self.prev_focus(),
@@ -96,6 +98,11 @@ impl Widget<Message, (), VoiceView> for Voice {
             }
             Message::Flt(m) => {
                 self.flt_txt.borrow_mut().update(m);
+            }
+            Message::Play => {
+                if let Some(voice) = self.get_voice() {
+                    return vec![Task::App(AppTask::PlayVoice(voice))];
+                }
             }
         };
         vec![]
@@ -126,6 +133,7 @@ impl View<Message> for VoiceView {
         match e {
             Event::NextFocus => return vec![Message::NextFocus],
             Event::PrevFocus => return vec![Message::PrevFocus],
+            Event::Activate => return vec![Message::Play],
             _ => {}
         }
 
@@ -153,6 +161,7 @@ pub fn voice_rc() -> VoiceRc {
 }
 
 pub mod list {
+    use crate::app::AppTask;
     use std::cell::RefCell;
     use std::rc::Rc;
 
@@ -212,8 +221,8 @@ pub mod list {
         }
     }
 
-    impl Widget<Message, (), VoiceListView> for VoiceList {
-        fn update(&mut self, msg: Message) -> Vec<Task<()>> {
+    impl Widget<Message, AppTask, VoiceListView> for VoiceList {
+        fn update(&mut self, msg: Message) -> Vec<Task<AppTask>> {
             match msg {
                 Message::NextFocus => self.next_focus(),
                 Message::PrevFocus => self.prev_focus(),
@@ -234,7 +243,7 @@ pub mod list {
                     self.set_voice_focus(*self.selected_voice_idx);
                 }
                 Message::Voice(idx, vm) => {
-                    self.voices[idx].borrow_mut().update(vm);
+                    return self.voices[idx].borrow_mut().update(vm);
                 }
             };
             vec![]
