@@ -23,10 +23,15 @@ pub mod focus;
 pub mod label;
 pub mod textbox;
 
+pub enum Task<T> {
+    Quit,
+    App(T),
+}
+
 /// A Widget is statefull and has the update() mechanism to mutate it's state.
 /// It create views that are entirely disconnected from itself (no back ref with a lifetime).
-pub trait Widget<Message, Task, V: View<Message>>: Focusable {
-    fn update(&mut self, msg: Message) -> Vec<Task>;
+pub trait Widget<Message, AppTask, V: View<Message>>: Focusable {
+    fn update(&mut self, msg: Message) -> Vec<Task<AppTask>>;
     fn view(&self, pos: Pos) -> V;
 }
 

@@ -15,7 +15,10 @@
 // You should have received a copy of the GNU General Public License
 // along with RTRK. If not, see <https://www.gnu.org/licenses/>.
 
-mod rodio;
+use std::sync::mpsc::{self, SendError};
+use std::thread;
+
+pub mod rodio;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Oscilator {
@@ -148,11 +151,9 @@ impl Iterator for WaveTableOscillator {
     }
 }
 
-use std::sync::mpsc::{self, SendError};
-use std::thread;
-
+// TODO use Duration instead of usize
 #[derive(Debug, Copy, Clone, PartialEq)]
-enum Message {
+pub enum Message {
     Play(Voice, usize, Frequency),
     Terminate,
 }
@@ -161,7 +162,7 @@ fn sink_factory() -> impl AudioSink<Iter = WaveTableOscillator> {
     crate::synth::rodio::RodioAudioSink::new(4)
 }
 
-struct AsyncSynth {
+pub struct AsyncSynth {
     thread: Option<thread::JoinHandle<()>>,
     tx: mpsc::Sender<Message>,
 }

@@ -26,7 +26,7 @@ use crate::uifw::pos::Pos;
 use crate::uifw::widget::focus::{FocusChain, FocusableRc};
 use crate::uifw::widget::textbox;
 use crate::uifw::widget::textbox::{textbox_rc, TextBoxRc, TextBoxView};
-use crate::uifw::widget::{Focusable, View, Widget};
+use crate::uifw::widget::{Focusable, Task, View, Widget};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Message {
@@ -84,7 +84,7 @@ impl Voice {
 }
 
 impl Widget<Message, (), VoiceView> for Voice {
-    fn update(&mut self, msg: Message) -> Vec<()> {
+    fn update(&mut self, msg: Message) -> Vec<Task<()>> {
         match msg {
             Message::NextFocus => self.next_focus(),
             Message::PrevFocus => self.prev_focus(),
@@ -163,7 +163,7 @@ pub mod list {
     use crate::uifw::pos::Pos;
     use crate::uifw::widget::focus::{FocusChain, FocusableRc};
     use crate::uifw::widget::label::{label, Label};
-    use crate::uifw::widget::{Focusable, View, Widget};
+    use crate::uifw::widget::{Focusable, Task, View, Widget};
     use crate::{app::voice, impl_focusable_with_focuschain};
 
     #[derive(Copy, Clone, Debug, PartialEq)]
@@ -213,7 +213,7 @@ pub mod list {
     }
 
     impl Widget<Message, (), VoiceListView> for VoiceList {
-        fn update(&mut self, msg: Message) -> Vec<()> {
+        fn update(&mut self, msg: Message) -> Vec<Task<()>> {
             match msg {
                 Message::NextFocus => self.next_focus(),
                 Message::PrevFocus => self.prev_focus(),

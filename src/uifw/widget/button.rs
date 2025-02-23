@@ -21,7 +21,7 @@ use std::rc::Rc;
 use crate::uifw::interaction::Event;
 use crate::uifw::interaction::Renderer;
 use crate::uifw::pos::Pos;
-use crate::uifw::widget::{Focusable, View, Widget};
+use crate::uifw::widget::{Focusable, Task, View, Widget};
 
 pub struct Button<Message> {
     text: String,
@@ -30,7 +30,7 @@ pub struct Button<Message> {
 }
 
 impl<Message: Copy> Widget<Message, (), ButtonView<Message>> for Button<Message> {
-    fn update(&mut self, _msg: Message) -> Vec<()> {
+    fn update(&mut self, _msg: Message) -> Vec<Task<()>> {
         vec![]
     }
     fn view(&self, pos: Pos) -> ButtonView<Message> {

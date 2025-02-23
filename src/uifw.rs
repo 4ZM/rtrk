@@ -20,15 +20,20 @@ pub mod pos;
 mod term;
 pub mod widget;
 
-use crate::app;
 use interaction::{EventCollector, Renderer};
 use pos::Pos;
 use std::collections::VecDeque;
 use std::time::Duration;
-use widget::{View, Widget};
+use widget::{Task, View, Widget};
 
-// Runtime - TODO Generalize on task
-pub fn start<Message, V: View<Message>>(app: &mut dyn Widget<Message, app::Task, V>) {
+pub trait TaskProcessor<AppTask> {
+    fn process(&mut self, task: &AppTask);
+}
+
+pub fn start<Message, AppTask, V: View<Message>, TP: TaskProcessor<AppTask>>(
+    app: &mut dyn Widget<Message, AppTask, V>,
+    task_processor: &mut TP,
+) {
     let mut renderer = term::CrosstermRenderer::new(std::io::stdout());
     let event_collector = term::CrosstermEventCollector {};
 
@@ -49,7 +54,7 @@ pub fn start<Message, V: View<Message>>(app: &mut dyn Widget<Message, app::Task,
         }
 
         // Update widgets
-        let mut tasks: Vec<app::Task> = vec![];
+        let mut tasks: Vec<Task<AppTask>> = vec![];
         while let Some(msg) = unprocessed_messages.pop_front() {
             tasks.extend(app.update(msg));
         }
@@ -57,8 +62,8 @@ pub fn start<Message, V: View<Message>>(app: &mut dyn Widget<Message, app::Task,
         // Dispatch tasks
         for t in tasks.iter() {
             match t {
-                app::Task::Quit => break 'app,
-                app::Task::PlayVoice(_v) => {}
+                Task::Quit => break 'app,
+                Task::App(t) => task_processor.process(&t),
             }
         }
     }

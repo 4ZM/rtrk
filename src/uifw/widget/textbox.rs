@@ -17,7 +17,7 @@
 
 use crate::uifw::interaction::{Event, Renderer, Style};
 use crate::uifw::pos::Pos;
-use crate::uifw::widget::{Focusable, View, Widget};
+use crate::uifw::widget::{Focusable, Task, View, Widget};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -51,7 +51,7 @@ impl TextBox {
 }
 
 impl Widget<Message, (), TextBoxView> for TextBox {
-    fn update(&mut self, msg: Message) -> Vec<()> {
+    fn update(&mut self, msg: Message) -> Vec<Task<()>> {
         match msg {
             Message::EnterChar(c) => {
                 self.text

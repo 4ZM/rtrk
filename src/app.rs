@@ -40,18 +40,20 @@ const SKIN: &str = r#"
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 "#;
 
+use crate::synth::{AsyncSynth, Note};
 use crate::uifw::interaction::Event;
 use crate::uifw::pos::Pos;
 use crate::uifw::widget::button::{button_rc, ButtonRc, ButtonView};
 use crate::uifw::widget::focus::{FocusChain, FocusableRc};
 use crate::uifw::widget::label::{label, Label};
-use crate::uifw::widget::{Focusable, View, Widget};
+use crate::uifw::widget::{Focusable, Task, View, Widget};
+use crate::uifw::TaskProcessor;
 use crate::{impl_focusable_with_focuschain, synth};
+use synth::rodio::RodioAudioSink;
 use voice::list::{voicelist_rc, VoiceListRc, VoiceListView};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum Task {
-    Quit,
+pub enum AppTask {
     PlayVoice(synth::Voice),
 }
 
@@ -72,6 +74,27 @@ pub struct App {
     stop_btn: ButtonRc<Message>,
     rewind_btn: ButtonRc<Message>,
     focus_chain: FocusChain,
+}
+
+pub struct AppTaskProcessor {
+    synth: AsyncSynth,
+}
+impl AppTaskProcessor {
+    pub fn new() -> Self {
+        Self {
+            synth: AsyncSynth::new(|| RodioAudioSink::new(4), 4),
+        }
+    }
+}
+impl TaskProcessor<AppTask> for AppTaskProcessor {
+    fn process(&mut self, task: &AppTask) {
+        match task {
+            AppTask::PlayVoice(v) => self
+                .synth
+                .send(synth::Message::Play(*v, 0, Note::A))
+                .expect(""),
+        }
+    }
 }
 
 impl App {
@@ -97,8 +120,8 @@ impl App {
     }
 }
 
-impl Widget<Message, Task, AppView> for App {
-    fn update(&mut self, msg: Message) -> Vec<Task> {
+impl Widget<Message, AppTask, AppView> for App {
+    fn update(&mut self, msg: Message) -> Vec<Task<AppTask>> {
         match msg {
             Message::Quit => return vec![Task::Quit],
             Message::VoiceList(m) => {
@@ -108,7 +131,7 @@ impl Widget<Message, Task, AppView> for App {
             Message::Stop => {}
             Message::Play => {
                 if let Some(voice) = self.voices.borrow().get_selected_voice() {
-                    return vec![Task::PlayVoice(voice)];
+                    return vec![Task::App(AppTask::PlayVoice(voice))];
                 }
             }
             Message::NextFocus => self.next_focus(),
