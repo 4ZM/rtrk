@@ -16,27 +16,25 @@
 // along with RTRK. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::synth::{AudioSink, WaveTableOscillator, SAMPLE_RATE};
-use rodio::{OutputStream, OutputStreamHandle, Sink, Source};
+use rodio::{OutputStream, Sink, Source};
 use std::time::Duration;
 
 use std::marker::PhantomData;
 pub struct RodioAudioSink<T> {
     _marker: PhantomData<T>,
-    stream: OutputStream, // Keep stream alive, can't use just the handle
-    stream_handle: OutputStreamHandle,
+    _stream: OutputStream, // Keep stream alive, can't use just the handle
     channels: Vec<Sink>,
 }
 impl<T> RodioAudioSink<T> {
     pub fn new(n_channels: usize) -> Self {
-        let (stream, stream_handle) =
+        let (_stream, stream_handle) =
             OutputStream::try_default().expect("Could not use default audio device.");
         let channels = (0..n_channels)
             .map(|_| Sink::try_new(&stream_handle).expect("Could not create audio sink"))
             .collect();
         Self {
             _marker: PhantomData,
-            stream,
-            stream_handle,
+            _stream,
             channels,
         }
     }

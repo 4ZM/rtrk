@@ -48,21 +48,6 @@ pub struct Envelope {
     pub release_ms: f32, // [3,4]
 }
 
-impl Envelope {
-    pub fn new() -> Self {
-        Self {
-            //attack_lvl: 1.0,
-            attack_ms: 0.1,
-            //decay_lvl: 0.9,
-            decay_ms: 0.1,
-            sustain_lvl: 0.9,
-            //sustain_min_ms: 0.5,
-            //release_lvl: 0.0,
-            release_ms: 0.1,
-        }
-    }
-}
-
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Filter {
     pub cutoff: f32,
@@ -159,16 +144,13 @@ pub enum Message {
     Terminate,
 }
 
-fn sink_factory() -> impl AudioSink<Iter = WaveTableOscillator> {
-    crate::synth::rodio::RodioAudioSink::new(4)
-}
-
 pub struct AsyncSynth {
     thread: Option<thread::JoinHandle<()>>,
     tx: mpsc::Sender<Message>,
 }
 impl AsyncSynth {
     // Use a factory instead of passing the RodioSource directly since it doesn't impl Send
+    // TODO: Revisit this design to consider if there is a better way.
     pub fn new<S, F>(sink_factory: F, channels: usize) -> Self
     where
         F: Fn() -> S + Send + 'static,
@@ -200,8 +182,9 @@ impl AsyncSynth {
     pub fn send(&mut self, msg: Message) -> Result<(), SendError<Message>> {
         self.tx.send(msg)
     }
-
-    pub fn drop(&mut self) {
+}
+impl Drop for AsyncSynth {
+    fn drop(&mut self) {
         let _ = self.send(Message::Terminate); // OK if this fails if thread already finished
         self.thread
             .take()
@@ -228,6 +211,10 @@ impl<S: AudioSink<Iter = WaveTableOscillator>> Synth<S> {
         Self { sink, channels }
     }
     pub fn play(&mut self, channel: usize, voice: &Voice, freq_hz: Frequency, duration_s: f32) {
+        if channel >= self.channels {
+            return; // TODO : Should return propper error
+        }
+
         let mut osc = match voice.osc {
             Oscillator::Sine => {
                 WaveTableOscillator::new(wave_tables::sine(32), math::lerp, duration_s)
@@ -251,6 +238,9 @@ impl<S: AudioSink<Iter = WaveTableOscillator>> Synth<S> {
     }
 
     pub fn stop(&mut self, channel: usize) {
+        if channel >= self.channels {
+            return; // TODO : Should return propper error
+        }
         self.sink.stop(channel);
     }
     pub fn wait_all(&mut self) {
@@ -258,11 +248,13 @@ impl<S: AudioSink<Iter = WaveTableOscillator>> Synth<S> {
             self.sink.wait(channel);
         }
     }
-
-    pub fn drop(&mut self) {
+}
+impl<S: AudioSink<Iter = WaveTableOscillator>> Drop for Synth<S> {
+    fn drop(&mut self) {
         for channel in 0..self.channels {
             self.sink.stop(channel);
         }
+        self.wait_all();
     }
 }
 
@@ -300,7 +292,7 @@ mod tests {
         thread::sleep(Duration::from_millis(100));
 
         synth.send(Message::Terminate).expect("");
-        synth.drop();
+        drop(synth);
     }
 
     #[test]

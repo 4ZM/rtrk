@@ -77,7 +77,7 @@ impl Voice {
             _ => return None,
         };
 
-        // Populate rest of voice data
+        // TODO Populate rest of voice data from text boxes
 
         Some(synth::Voice {
             osc,
@@ -152,7 +152,7 @@ impl View<Message> for VoiceView {
             Event::PrevFocus => return vec![Message::PrevFocus],
             Event::Char('P') => return vec![Message::Play],
             Event::Char('S') => return vec![Message::Stop],
-            Event::Char('0'..='9' | 'A'..='F' | ' ') => {}
+            Event::Char('0'..='9' | 'A'..='F' | ' ') => {} // Only hex input
             Event::Char(_) => return vec![],
             _ => {}
         }
@@ -187,7 +187,6 @@ pub mod list {
 
     use crate::app::voice::{voice_rc, VoiceRc, VoiceView};
     use crate::cycle::Cycle;
-    use crate::synth;
     use crate::uifw::interaction::Event;
     use crate::uifw::pos::Pos;
     use crate::uifw::widget::focus::{FocusChain, FocusableRc};
@@ -235,10 +234,6 @@ pub mod list {
                 .push(self.voices[idx].clone() as FocusableRc);
             self.focus_chain.next_focus();
         }
-
-        pub fn get_selected_voice(&self) -> Option<synth::Voice> {
-            self.voices[*self.selected_voice_idx].borrow().get_voice()
-        }
     }
 
     impl Widget<Message, AppTask, VoiceListView> for VoiceList {
@@ -276,6 +271,7 @@ pub mod list {
                 self.first_voice_idx,
                 self.list_window_len,
                 self.focus_chain.has_focus(),
+                *self.selected_voice_idx,
             )
         }
     }
@@ -295,6 +291,7 @@ pub mod list {
             first_voice_idx: Cycle,
             list_len: usize,
             has_focus: bool,
+            selected_voice_idx: usize,
         ) -> Self {
             let voices: Vec<_> = voices
                 .iter()
@@ -306,15 +303,18 @@ pub mod list {
                 voices: voices
                     .iter()
                     .enumerate()
-                    .map(|(i, v)| v.borrow().view(pos + Pos { r: i as u16, c: 5 }))
+                    .map(|(i, v)| v.borrow().view(pos + Pos { r: i as u16, c: 6 }))
                     .collect(),
                 idx_offset: first_voice_idx,
                 idx_labels: (0..list_len)
                     .map(|i| {
-                        label(
-                            pos + Pos { r: i as u16, c: 0 },
-                            &format!("{:02X}", *(first_voice_idx + i)),
-                        )
+                        let idx = *(first_voice_idx + i);
+                        let lbl = if selected_voice_idx == idx {
+                            format!(">{:02X}", idx)
+                        } else {
+                            format!(" {:02X}", idx)
+                        };
+                        label(pos + Pos { r: i as u16, c: 0 }, &lbl)
                     })
                     .collect(),
                 has_focus,
