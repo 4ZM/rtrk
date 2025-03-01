@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with RTRK. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::uifw::interaction::{Event, Renderer, Style, CharModifiers};
+use crate::uifw::interaction::{CharModifiers, Event, Renderer, Style};
 use crate::uifw::pos::Pos;
 use crate::uifw::widget::{Focusable, Task, View, Widget};
 use std::cell::RefCell;
@@ -133,7 +133,7 @@ impl View<Message> for TextBoxView {
 
         let msgs = match e {
             Event::Activate => vec![],
-            Event::Char(c, m) => vec![Message::EnterChar(c,m)],
+            Event::Char(c, m) => vec![Message::EnterChar(c, m)],
             Event::Left => vec![Message::CursorLeft],
             Event::Right => vec![Message::CursorRight],
             Event::Del => vec![Message::Del],

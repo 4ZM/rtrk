@@ -6,7 +6,6 @@ authors = ["Anders Sundman <anders@4zm.org>"]
 license = "GPL-3.0"
 
 [dependencies]
-bitflags = "2.8.0"
+bitflags = "2.9.0"
 crossterm = "0.28.1"
-itertools = "0.14.0"
 rodio = "0.20.1"
