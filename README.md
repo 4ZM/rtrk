@@ -1,16 +1,16 @@
 # The Rusty TRacKer
 
-A Synth and Tracker for making sweet noise
+A console based Synth and Tracker for making sweet noise
 
 ```
 ┏━━━━━━━━━[ rtrk ]━━━━━━━━━━━━━━━━━━━━━━━━━━ , ━━━━━━ [v0.1] ━━━ =^..^= ━━━━━━━┓
 ┃                                     ______/ \_ _/\______,___/\ ___' _____,   ┃
-┃  01 . 1 AADDSSRR LLHHXX             \         \   ____/       \   :/    /    ┃
-┃  02 : 1 -------- ------             /    <    /:  \ \    >    /   ;   _/     ┃
-┃  03 : 1 -------- ------            /         < |   \/       <<         \     ┃
-┃  04 : 2 -------- ------           /      :    \|    \    ;    \   ,     \    ┃
-┃  05 : 3 -------- ------           \      |     \    /    |     \  :      \   ┃
-┃  06 ' 1 -------- ------            \  ___^_____/   /\____|     /__:       \  ┃
+┃ >01 . 1 AADDSSRR LLHHXX             \         \   ____/       \   :/    /    ┃
+┃  02 : 4 -------- ------             /    <    /:  \ \    >    /   ;   _/     ┃
+┃  03 : - -------- ------            /         < |   \/       <<         \     ┃
+┃  04 : - -------- ------           /      :    \|    \    ;    \   ,     \    ┃
+┃  05 : - -------- ------           \      |     \    /    |     \  :      \   ┃
+┃  06 ' - -------- ------            \  ___^_____/   /\____|     /__:       \  ┃
 ┃                                     \/   ;      \ /  4ZM  \___/   |_______/  ┃
 ┠──────────────────────────────────────────────────'───────────────────────────┨
 ┃ ▚▚▚▚▚▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚▞▚█████                            | << | . |[>]|        ┃
@@ -25,15 +25,33 @@ A Synth and Tracker for making sweet noise
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 ```
 
+# Project Status
+
+This project is in early development. It's not yet a useful instrument. Current capabilities only allow some basic UI navigation and playing simple wave forms using primitive wave table synthesis.
+
+Next up on the todo list is implementing:
+
+* Keyboard synth interface to play notes.
+* ADSR and LP/HP filters for the synth module.
+* Flicker free double buffered rendering
+* Playing single notes in the tracker module
+
 ## UI Explained
 
-Top list is synth and sound design part, format:
+The top left part of the UI is the synth voice designer. This is where you create the basic sounds you can then play with in the tracker part.
 
-#Sound WaveFormCode Attack Decay Sustain Release LoPass HiPass Other Filter
+The format is: `1 AADDSSRR LLHHXX`
 
-The lower part is the tracker, format:
+The first digit is oscillator code. Currently supported are:
+1. Sine
+2. Triangle
+3. Saw
+4. Square
+5. Pulse
 
-TimeIndex Track1 Track2 Track3 Track4 GlobalEffects[Code Parameter]
+Then we have the ADSR envelope and finally LP, HP and TBD filter parameter.
+
+The lower part of the UI is the tracker (not yet implemented)
 
 Each track has this format:
 
