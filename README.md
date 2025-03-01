@@ -27,7 +27,8 @@ A console based Synth and Tracker for making sweet noise
 
 # Project Status
 
-This project is in early development. It's not yet a useful instrument. Current capabilities only allow some basic UI navigation and playing simple wave forms using primitive wave table synthesis.
+This project is in early development. It's not yet a useful instrument. Current capabilities only allow some basic UI
+navigation and playing simple wave forms using primitive wave table synthesis.
 
 Next up on the todo list is implementing:
 
@@ -38,11 +39,13 @@ Next up on the todo list is implementing:
 
 ## UI Explained
 
-The top left part of the UI is the synth voice designer. This is where you create the basic sounds you can then play with in the tracker part.
+The top left part of the UI is the synth voice designer. This is where you create the basic sounds you can then play
+with in the tracker part.
 
 The format is: `1 AADDSSRR LLHHXX`
 
 The first digit is oscillator code. Currently supported are:
+
 1. Sine
 2. Triangle
 3. Saw
@@ -51,12 +54,15 @@ The first digit is oscillator code. Currently supported are:
 
 Then we have the ADSR envelope and finally LP, HP and TBD filter parameter.
 
+Toggle between UI edit mode and claviature mode with \` In claviature mode play the selected voice with Z=C, X=D, etc.
+Use SHIFT to shift up one octave and SPC to stop the playing voice.
+
 The lower part of the UI is the tracker (not yet implemented)
 
 Each track has this format:
 
-Note (freq)   Sound    Vol    Effect[Code Parameter]
-C#4           1        A0     1           01
+Note (freq)   Sound Vol Effect[Code Parameter]
+C#4 1 A0 1 01
 
 ## License
 
