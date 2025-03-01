@@ -673,6 +673,7 @@ dependencies = [
 name = "rtrk"
 version = "0.1.0"
 dependencies = [
+ "bitflags 2.8.0",
  "crossterm",
  "itertools 0.14.0",
  "rodio",

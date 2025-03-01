@@ -16,18 +16,19 @@
 // along with RTRK. If not, see <https://www.gnu.org/licenses/>.
 
 // Crossterm adapter for the interactions
-use crate::uifw::interaction::EventCollector;
 use crate::uifw::interaction::Renderer;
 use crate::uifw::interaction::Style;
+use crate::uifw::interaction::{CharModifiers, EventCollector};
 use crate::uifw::pos::Pos;
 use crossterm::event::KeyEventKind;
+use crossterm::event::KeyEventState;
 use crossterm::style::ResetColor;
 use std::io;
 use std::time::Duration;
 
 pub use crossterm::{
     cursor,
-    event::{self, KeyCode, KeyEvent},
+    event::{self, KeyCode, KeyEvent, KeyModifiers},
     execute, queue, style,
     style::{Attribute, Color, SetAttribute, SetBackgroundColor, SetForegroundColor},
     terminal::{self, ClearType},
@@ -116,74 +117,96 @@ impl EventCollector for CrosstermEventCollector {
             return vec![];
         }
 
-        match event::read() {
-            Ok(crossterm::event::Event::Key(KeyEvent {
-                code: KeyCode::Esc,
-                kind: KeyEventKind::Press,
-                modifiers: _,
-                state: _,
-            })) => return vec![crate::uifw::interaction::Event::Quit],
-            Ok(crossterm::event::Event::Key(KeyEvent {
-                code: KeyCode::Tab,
-                kind: KeyEventKind::Press,
-                modifiers: _,
-                state: _,
-            })) => return vec![crate::uifw::interaction::Event::NextFocus],
-            Ok(crossterm::event::Event::Key(KeyEvent {
-                code: KeyCode::BackTab,
-                kind: KeyEventKind::Press,
-                modifiers: _,
-                state: _,
-            })) => return vec![crate::uifw::interaction::Event::PrevFocus],
-            Ok(crossterm::event::Event::Key(KeyEvent {
-                code: KeyCode::Enter,
-                kind: KeyEventKind::Press,
-                modifiers: _,
-                state: _,
-            })) => return vec![crate::uifw::interaction::Event::Activate],
-            Ok(crossterm::event::Event::Key(KeyEvent {
-                code: KeyCode::Delete,
-                kind: KeyEventKind::Press,
-                modifiers: _,
-                state: _,
-            })) => return vec![crate::uifw::interaction::Event::Del],
-            Ok(crossterm::event::Event::Key(KeyEvent {
-                code: KeyCode::Backspace,
-                kind: KeyEventKind::Press,
-                modifiers: _,
-                state: _,
-            })) => return vec![crate::uifw::interaction::Event::DelBack],
-            Ok(crossterm::event::Event::Key(KeyEvent {
-                code: KeyCode::Left,
-                kind: KeyEventKind::Press,
-                modifiers: _,
-                state: _,
-            })) => return vec![crate::uifw::interaction::Event::Left],
-            Ok(crossterm::event::Event::Key(KeyEvent {
-                code: KeyCode::Right,
-                kind: KeyEventKind::Press,
-                modifiers: _,
-                state: _,
-            })) => return vec![crate::uifw::interaction::Event::Right],
-            Ok(crossterm::event::Event::Key(KeyEvent {
-                code: KeyCode::Up,
-                kind: KeyEventKind::Press,
-                modifiers: _,
-                state: _,
-            })) => return vec![crate::uifw::interaction::Event::Up],
-            Ok(crossterm::event::Event::Key(KeyEvent {
-                code: KeyCode::Down,
-                kind: KeyEventKind::Press,
-                modifiers: _,
-                state: _,
-            })) => return vec![crate::uifw::interaction::Event::Down],
-            Ok(crossterm::event::Event::Key(KeyEvent {
-                code: KeyCode::Char(c),
-                kind: KeyEventKind::Press,
-                modifiers: _,
-                state: _,
-            })) => return vec![crate::uifw::interaction::Event::Char(c)],
-            _ => vec![],
+        if let Ok(crossterm::event::Event::Key(key)) = event::read() {
+            match key {
+                KeyEvent {
+                    code: KeyCode::Esc,
+                    kind: KeyEventKind::Press,
+                    modifiers: _,
+                    state: _,
+                } => vec![crate::uifw::interaction::Event::Quit],
+                KeyEvent {
+                    code: KeyCode::Tab,
+                    kind: KeyEventKind::Press,
+                    modifiers: _,
+                    state: _,
+                } => vec![crate::uifw::interaction::Event::NextFocus],
+                KeyEvent {
+                    code: KeyCode::BackTab,
+                    kind: KeyEventKind::Press,
+                    modifiers: _,
+                    state: _,
+                } => vec![crate::uifw::interaction::Event::PrevFocus],
+                KeyEvent {
+                    code: KeyCode::Enter,
+                    kind: KeyEventKind::Press,
+                    modifiers: _,
+                    state: _,
+                } => vec![crate::uifw::interaction::Event::Activate],
+                KeyEvent {
+                    code: KeyCode::Delete,
+                    kind: KeyEventKind::Press,
+                    modifiers: _,
+                    state: _,
+                } => vec![crate::uifw::interaction::Event::Del],
+                KeyEvent {
+                    code: KeyCode::Backspace,
+                    kind: KeyEventKind::Press,
+                    modifiers: _,
+                    state: _,
+                } => vec![crate::uifw::interaction::Event::DelBack],
+                KeyEvent {
+                    code: KeyCode::Left,
+                    kind: KeyEventKind::Press,
+                    modifiers: _,
+                    state: _,
+                } => vec![crate::uifw::interaction::Event::Left],
+                KeyEvent {
+                    code: KeyCode::Right,
+                    kind: KeyEventKind::Press,
+                    modifiers: _,
+                    state: _,
+                } => vec![crate::uifw::interaction::Event::Right],
+                KeyEvent {
+                    code: KeyCode::Up,
+                    kind: KeyEventKind::Press,
+                    modifiers: _,
+                    state: _,
+                } => vec![crate::uifw::interaction::Event::Up],
+                KeyEvent {
+                    code: KeyCode::Down,
+                    kind: KeyEventKind::Press,
+                    modifiers: _,
+                    state: _,
+                } => vec![crate::uifw::interaction::Event::Down],
+                KeyEvent {
+                    code: KeyCode::Char(c),
+                    kind: KeyEventKind::Press,
+                    modifiers: modifier,
+                    state,
+                } => {
+                    let mut cm = modifier.iter().fold(CharModifiers::None, |cm, km| {
+                        cm | match km {
+                            KeyModifiers::ALT => CharModifiers::Alt,
+                            KeyModifiers::CONTROL => CharModifiers::Ctrl,
+                            KeyModifiers::SHIFT => CharModifiers::Shift,
+                            _ => CharModifiers::None,
+                        }
+                    });
+
+                    cm = state.iter().fold(cm, |cm, state| {
+                        cm | match state {
+                            KeyEventState::CAPS_LOCK => CharModifiers::CapsLock,
+                            _ => CharModifiers::None,
+                        }
+                    });
+
+                    vec![crate::uifw::interaction::Event::Char(c, cm)]
+                }
+                _ => vec![],
+            }
+        } else {
+            vec![]
         }
     }
 }

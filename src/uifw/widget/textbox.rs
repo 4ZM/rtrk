@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with RTRK. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::uifw::interaction::{Event, Renderer, Style};
+use crate::uifw::interaction::{Event, Renderer, Style, CharModifiers};
 use crate::uifw::pos::Pos;
 use crate::uifw::widget::{Focusable, Task, View, Widget};
 use std::cell::RefCell;
@@ -23,7 +23,7 @@ use std::rc::Rc;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Message {
-    EnterChar(char),
+    EnterChar(char, CharModifiers),
     Del,
     DelBack,
     CursorLeft,
@@ -53,7 +53,7 @@ impl TextBox {
 impl Widget<Message, (), TextBoxView> for TextBox {
     fn update(&mut self, msg: Message) -> Vec<Task<()>> {
         match msg {
-            Message::EnterChar(c) => {
+            Message::EnterChar(c, _) => {
                 self.text
                     .replace_range(self.carret_idx..self.carret_idx + 1, &c.to_string());
 
@@ -133,7 +133,7 @@ impl View<Message> for TextBoxView {
 
         let msgs = match e {
             Event::Activate => vec![],
-            Event::Char(c) => vec![Message::EnterChar(c)],
+            Event::Char(c, m) => vec![Message::EnterChar(c,m)],
             Event::Left => vec![Message::CursorLeft],
             Event::Right => vec![Message::CursorRight],
             Event::Del => vec![Message::Del],

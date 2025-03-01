@@ -143,17 +143,17 @@ impl View<Message> for VoiceView {
         }
 
         let mut e = e;
-        if let Event::Char(c @ 'a'..='z') = e {
-            e = Event::Char(c.to_ascii_uppercase());
+        if let Event::Char(c @ 'a'..='z', m) = e {
+            e = Event::Char(c.to_ascii_uppercase(), m);
         }
 
         match e {
             Event::NextFocus => return vec![Message::NextFocus],
             Event::PrevFocus => return vec![Message::PrevFocus],
-            Event::Char('P') => return vec![Message::Play],
-            Event::Char('S') => return vec![Message::Stop],
-            Event::Char('0'..='9' | 'A'..='F' | ' ') => {} // Only hex input
-            Event::Char(_) => return vec![],
+            Event::Char('P', _) => return vec![Message::Play],
+            Event::Char('S', _) => return vec![Message::Stop],
+            Event::Char('0'..='9' | 'A'..='F' | ' ', _) => {} // Only hex input
+            Event::Char(_, _) => return vec![],
             _ => {}
         }
 

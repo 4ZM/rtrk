@@ -18,6 +18,19 @@
 /// The abstract interraction interface between the Application and the UI framework.
 /// Different UI frameworks can implement this (e.g. terminal, web, etc).
 use crate::uifw::pos::Pos;
+use bitflags::bitflags;
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct CharModifiers(u8);
+bitflags! {
+    impl CharModifiers: u8 {
+        const None = 0b0000_0000;
+        const Shift = 0b0000_0001;
+        const Ctrl = 0b0000_0010;
+        const Alt = 0b0000_0100;
+        const CapsLock = 0b0000_1000;
+    }
+}
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Event {
@@ -25,7 +38,7 @@ pub enum Event {
     PrevFocus,
     Activate,
     Quit,
-    Char(char),
+    Char(char, CharModifiers),
     Del,
     DelBack,
     Right,
