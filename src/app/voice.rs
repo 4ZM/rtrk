@@ -33,8 +33,6 @@ use crate::uifw::widget::{Focusable, Task, View, Widget};
 pub enum Message {
     NextFocus,
     PrevFocus,
-    Play,
-    Stop,
     Osc(textbox::Message),
     Env(textbox::Message),
     Flt(textbox::Message),
@@ -69,11 +67,11 @@ impl Voice {
     pub fn get_voice(&self) -> Option<synth::Voice> {
         let osc = self.osc_txt.borrow().text().parse::<usize>();
         let osc = match osc {
-            Ok(0) => synth::Oscillator::Sine,
-            Ok(1) => synth::Oscillator::Triangle,
-            Ok(2) => synth::Oscillator::Saw,
-            Ok(3) => synth::Oscillator::Square,
-            Ok(4) => synth::Oscillator::Pulse,
+            Ok(1) => synth::Oscillator::Sine,
+            Ok(2) => synth::Oscillator::Triangle,
+            Ok(3) => synth::Oscillator::Saw,
+            Ok(4) => synth::Oscillator::Square,
+            Ok(5) => synth::Oscillator::Pulse,
             _ => return None,
         };
 
@@ -101,14 +99,6 @@ impl Widget<Message, AppTask, VoiceView> for Voice {
             }
             Message::Flt(m) => {
                 self.flt_txt.borrow_mut().update(m);
-            }
-            Message::Play => {
-                if let Some(voice) = self.get_voice() {
-                    return vec![Task::App(AppTask::PlayVoice(voice))];
-                }
-            }
-            Message::Stop => {
-                return vec![Task::App(AppTask::StopVoice)];
             }
         };
         vec![]
@@ -142,18 +132,11 @@ impl View<Message> for VoiceView {
             return vec![];
         }
 
-        let mut e = e;
-        if let Event::Char(c @ 'a'..='z', m) = e {
-            e = Event::Char(c.to_ascii_uppercase(), m);
-        }
-
         match e {
             Event::NextFocus => return vec![Message::NextFocus],
             Event::PrevFocus => return vec![Message::PrevFocus],
-            Event::Char('P', _) => return vec![Message::Play],
-            Event::Char('S', _) => return vec![Message::Stop],
-            Event::Char('0'..='9' | 'A'..='F' | ' ', _) => {} // Only hex input
-            Event::Char(_, _) => return vec![],
+            Event::Char('0'..='9' | 'A'..='F' | ' ', _) => {}
+            Event::Char(_, _) => return vec![], // Bail on non hex input
             _ => {}
         }
 
@@ -192,7 +175,7 @@ pub mod list {
     use crate::uifw::widget::focus::{FocusChain, FocusableRc};
     use crate::uifw::widget::label::{label, Label};
     use crate::uifw::widget::{Focusable, Task, View, Widget};
-    use crate::{app::voice, impl_focusable_with_focuschain};
+    use crate::{app::voice, impl_focusable_with_focuschain, synth};
 
     #[derive(Copy, Clone, Debug, PartialEq)]
     pub enum Message {
@@ -212,6 +195,9 @@ pub mod list {
     }
 
     impl VoiceList {
+        pub fn get_selected_voice(&self) -> Option<synth::Voice> {
+            self.voices[*self.selected_voice_idx].borrow().get_voice()
+        }
         pub fn new() -> Self {
             let list_window_len = 6;
             let voices: Vec<_> = (0..0x100).map(|_| voice_rc()).collect();

@@ -40,8 +40,8 @@ const SKIN: &str = r#"
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 "#;
 
-use crate::synth::{AsyncSynth, Note};
-use crate::uifw::interaction::Event;
+use crate::synth::{AsyncSynth, Frequency};
+use crate::uifw::interaction::{CharModifiers, Event};
 use crate::uifw::pos::Pos;
 use crate::uifw::widget::button::{button_rc, ButtonRc, ButtonView};
 use crate::uifw::widget::focus::{FocusChain, FocusableRc};
@@ -54,7 +54,7 @@ use voice::list::{voicelist_rc, VoiceListRc, VoiceListView};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum AppTask {
-    PlayVoice(synth::Voice),
+    PlayVoice(synth::Voice, synth::Frequency),
     StopVoice,
 }
 
@@ -63,18 +63,27 @@ pub enum Message {
     Quit,
     Play,
     Stop,
+    PlayVoice(synth::Frequency),
+    StopVoice,
     Rewind,
     NextFocus,
     PrevFocus,
+    NextKbdMode,
     VoiceList(voice::list::Message),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum KbdMode {
+    Text,
+    Claviature,
+}
 pub struct App {
     voices: VoiceListRc,
     play_btn: ButtonRc<Message>,
     stop_btn: ButtonRc<Message>,
     rewind_btn: ButtonRc<Message>,
     focus_chain: FocusChain,
+    kbd_mode: KbdMode,
 }
 
 pub struct AppTaskProcessor {
@@ -91,9 +100,9 @@ impl TaskProcessor<AppTask> for AppTaskProcessor {
     fn process(&mut self, task: &AppTask) {
         let channel = 0;
         match task {
-            AppTask::PlayVoice(v) => self
+            AppTask::PlayVoice(v, freq) => self
                 .synth
-                .send(synth::Message::Play(*v, channel, Note::A))
+                .send(synth::Message::Play(*v, channel, *freq))
                 .expect(""),
             AppTask::StopVoice => self.synth.send(synth::Message::Stop(channel)).expect(""),
         }
@@ -119,6 +128,7 @@ impl App {
             stop_btn,
             play_btn,
             focus_chain,
+            kbd_mode: KbdMode::Text,
         }
     }
 }
@@ -133,8 +143,20 @@ impl Widget<Message, AppTask, AppView> for App {
             Message::Rewind => {}
             Message::Stop => {}
             Message::Play => {}
+            Message::StopVoice => return vec![Task::App(AppTask::StopVoice)],
+            Message::PlayVoice(freq) => {
+                if let Some(voice) = self.voices.borrow().get_selected_voice() {
+                    return vec![Task::App(AppTask::PlayVoice(voice, freq))];
+                }
+            }
             Message::NextFocus => self.next_focus(),
             Message::PrevFocus => self.prev_focus(),
+            Message::NextKbdMode => {
+                self.kbd_mode = match self.kbd_mode {
+                    KbdMode::Text => KbdMode::Claviature,
+                    KbdMode::Claviature => KbdMode::Text,
+                }
+            }
         };
         vec![]
     }
@@ -146,6 +168,7 @@ impl Widget<Message, AppTask, AppView> for App {
             rewind_btn: self.rewind_btn.borrow().view(pos + Pos { r: 11, c: 58 }),
             stop_btn: self.stop_btn.borrow().view(pos + Pos { r: 11, c: 63 }),
             play_btn: self.play_btn.borrow().view(pos + Pos { r: 11, c: 67 }),
+            kbd_mode: self.kbd_mode,
         }
     }
 }
@@ -157,10 +180,15 @@ pub struct AppView {
     stop_btn: ButtonView<Message>,
     play_btn: ButtonView<Message>,
     skin: Label,
+    kbd_mode: KbdMode,
 }
 impl View<Message> for AppView {
     fn draw(&self, renderer: &mut dyn crate::uifw::interaction::Renderer) {
-        self.skin.draw(renderer);
+        self.skin.draw(renderer); // Must draw first since it will overwrite everything
+        match self.kbd_mode {
+            KbdMode::Text => renderer.render_str(Pos { r: 9, c: 67 }, "#"),
+            KbdMode::Claviature => renderer.render_str(Pos { r: 9, c: 67 }, "♫"),
+        }
         self.voices.draw(renderer);
         self.rewind_btn.draw(renderer);
         self.stop_btn.draw(renderer);
@@ -170,6 +198,45 @@ impl View<Message> for AppView {
     fn on_event(&self, e: Event) -> Vec<Message> {
         match e {
             Event::Quit => return vec![Message::Quit],
+            Event::Char('`', _) => return vec![Message::NextKbdMode],
+            _ => {}
+        }
+
+        // Uppercase all chars
+        let mut e = e;
+        if let Event::Char(c @ 'a'..='z', m) = e {
+            e = Event::Char(c.to_ascii_uppercase(), m);
+        }
+
+        fn play_message(Frequency(freq): Frequency, cm: CharModifiers) -> Message {
+            Message::PlayVoice(Frequency(
+                freq * match cm {
+                    CharModifiers::Shift => 2.0,
+                    _ => 1.0,
+                },
+            ))
+        }
+
+        if self.kbd_mode == KbdMode::Claviature {
+            return match e {
+                Event::Char('Z', m) => vec![play_message(synth::Note::C, m)],
+                Event::Char('S', m) => vec![play_message(synth::Note::CS, m)],
+                Event::Char('X', m) => vec![play_message(synth::Note::D, m)],
+                Event::Char('D', m) => vec![play_message(synth::Note::DS, m)],
+                Event::Char('C', m) => vec![play_message(synth::Note::E, m)],
+                Event::Char('V', m) => vec![play_message(synth::Note::F, m)],
+                Event::Char('G', m) => vec![play_message(synth::Note::FS, m)],
+                Event::Char('B', m) => vec![play_message(synth::Note::G, m)],
+                Event::Char('H', m) => vec![play_message(synth::Note::GS, m)],
+                Event::Char('N', m) => vec![play_message(synth::Note::A, m)],
+                Event::Char('J', m) => vec![play_message(synth::Note::AS, m)],
+                Event::Char('M', m) => vec![play_message(synth::Note::B, m)],
+                Event::Char(' ', _) => vec![Message::StopVoice],
+                _ => vec![], // Short circuit other input
+            };
+        }
+
+        match e {
             Event::NextFocus => return vec![Message::NextFocus],
             Event::PrevFocus => return vec![Message::PrevFocus],
             _ => {}

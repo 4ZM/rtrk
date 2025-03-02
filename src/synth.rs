@@ -168,7 +168,7 @@ impl AsyncSynth {
 
                 match message {
                     Ok(Message::Play(voice, channel, freq)) => {
-                        synth.play(channel, &voice, freq, 2.0)
+                        synth.play(channel, &voice, freq, 0.6)
                     }
                     Ok(Message::Stop(channel)) => synth.stop(channel),
                     Ok(Message::Terminate) => break,
