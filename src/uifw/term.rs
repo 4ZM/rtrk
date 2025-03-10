@@ -26,6 +26,9 @@ use crossterm::style::ResetColor;
 use std::io;
 use std::time::Duration;
 
+const MIN_TERM_WIDTH: u16 = 80;
+const MIN_TERM_HEIGHT: u16 = 24;
+
 pub use crossterm::{
     cursor,
     event::{self, KeyCode, KeyEvent, KeyModifiers},
@@ -35,6 +38,7 @@ pub use crossterm::{
 };
 
 pub struct CrosstermRenderer<W: io::Write> {
+    term_size: Pos,
     w: W,
 }
 impl<W: io::Write> CrosstermRenderer<W> {
@@ -43,7 +47,22 @@ impl<W: io::Write> CrosstermRenderer<W> {
         execute!(w.by_ref(), terminal::EnterAlternateScreen,)
             .expect("Unable to create CrosstermRenderer");
 
-        CrosstermRenderer { w }
+        let (c, r) = terminal::size().expect("Unable to determine size of terminal");
+
+        CrosstermRenderer {
+            w,
+            term_size: Pos { r, c },
+        }
+    }
+
+    fn ui_offset(&self, Pos { r, c }: Pos) -> Option<Pos> {
+        if self.term_size.r < MIN_TERM_HEIGHT || self.term_size.c < MIN_TERM_WIDTH {
+            return None;
+        }
+        Some(Pos {
+            r: (self.term_size.r - MIN_TERM_HEIGHT) / 2 + r,
+            c: (self.term_size.c - MIN_TERM_WIDTH) / 2 + c,
+        })
     }
 }
 impl<W: io::Write> Drop for CrosstermRenderer<W> {
@@ -62,49 +81,65 @@ impl<W: io::Write> Drop for CrosstermRenderer<W> {
 impl<W: io::Write> Renderer for CrosstermRenderer<W> {
     fn clear(&mut self) {
         queue!(self.w, terminal::Clear(ClearType::All),).expect("Unable to clear terminal");
+        let (c, r) = terminal::size().expect("Unable to determine size of terminal");
+        self.term_size = Pos { r, c };
     }
     fn flush(&mut self) {
         self.w.flush().expect("Unable to flush writer");
     }
 
-    fn render_str(&mut self, Pos { r, c }: Pos, text: &str) {
-        let _ = queue!(
-            self.w,
-            cursor::Hide,
-            cursor::MoveTo(c, r),
-            SetForegroundColor(Color::Rgb { r: 0, g: 255, b: 0 }),
-        );
+    fn render_str(&mut self, pos: Pos, text: &str) {
+        if let Some(Pos { r, c }) = self.ui_offset(pos) {
+            let _ = queue!(
+                self.w,
+                cursor::Hide,
+                SetForegroundColor(Color::Rgb { r: 0, g: 255, b: 0 }),
+            );
 
-        for l in text.lines() {
-            let _ = queue!(self.w, style::Print(l), cursor::MoveToNextLine(1));
+            for (i, l) in text.lines().enumerate() {
+                let _ = queue!(self.w, cursor::MoveTo(c, r + i as u16), style::Print(l),);
+            }
+        } else {
+            // Screen area too small..
+            // TODO: Don't print it every time
+            let _ = queue!(
+                self.w,
+                cursor::Hide,
+                cursor::MoveTo(
+                    std::cmp::max(self.term_size.c as i32 / 2 - 2, 0) as u16,
+                    self.term_size.r / 2
+                ),
+                SetForegroundColor(Color::Rgb { r: 0, g: 255, b: 0 }),
+                style::Print("^..^"),
+            );
         }
     }
+    fn render_fmt_str(&mut self, pos: Pos, text: &str, fmt: Style) {
+        if let Some(Pos { r, c }) = self.ui_offset(pos) {
+            let _ = queue!(self.w, cursor::Hide, cursor::MoveTo(c, r),);
 
-    fn render_fmt_str(&mut self, Pos { r, c }: Pos, text: &str, fmt: Style) {
-        let _ = queue!(self.w, cursor::Hide, cursor::MoveTo(c, r),);
+            if fmt == Style::Invert {
+                let _ = queue!(
+                    self.w,
+                    SetForegroundColor(Color::Black),
+                    SetBackgroundColor(Color::Rgb { r: 0, g: 255, b: 0 }),
+                    SetAttribute(Attribute::Bold),
+                );
+            }
+            if fmt == Style::Highlight {
+                let _ = queue!(
+                    self.w,
+                    SetForegroundColor(Color::Rgb { r: 0, g: 255, b: 0 }),
+                    SetBackgroundColor(Color::Rgb { r: 0, g: 60, b: 0 }),
+                );
+            }
+            for (i, l) in text.lines().enumerate() {
+                let _ = queue!(self.w, cursor::MoveTo(c, r + i as u16), style::Print(l),);
+            }
 
-        if fmt == Style::Invert {
-            let _ = queue!(
-                self.w,
-                SetForegroundColor(Color::Black),
-                SetBackgroundColor(Color::Rgb { r: 0, g: 255, b: 0 }),
-                SetAttribute(Attribute::Bold),
-            );
-        }
-        if fmt == Style::Highlight {
-            let _ = queue!(
-                self.w,
-                SetForegroundColor(Color::Rgb { r: 0, g: 255, b: 0 }),
-                SetBackgroundColor(Color::Rgb { r: 0, g: 60, b: 0 }),
-            );
-        }
-
-        for l in text.lines() {
-            let _ = queue!(self.w, style::Print(l), cursor::MoveToNextLine(1));
-        }
-
-        if fmt != Style::Default {
-            let _ = queue!(self.w, SetAttribute(Attribute::Reset), ResetColor,);
+            if fmt != Style::Default {
+                let _ = queue!(self.w, SetAttribute(Attribute::Reset), ResetColor,);
+            }
         }
     }
 }
